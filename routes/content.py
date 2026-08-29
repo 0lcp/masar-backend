@@ -1,8 +1,8 @@
 from datetime import datetime
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 
-from models import db, User, Subject, Lesson, Progress
+from models import db, User, Subject, Lesson, Progress, user_has_active_subscription
 
 content_bp = Blueprint("content", __name__, url_prefix="/api/content")
 
@@ -11,33 +11,44 @@ def error(message, status=400):
     return jsonify({"success": False, "error": message}), status
 
 
+def _current_user_optional():
+    """يرجع (user, has_subscription) لو فيه توكن صالح، وإلا (None, False)."""
+    try:
+        verify_jwt_in_request(optional=True)
+        user_id = get_jwt_identity()
+        if user_id:
+            user = User.query.get(user_id)
+            if user:
+                return user, user_has_active_subscription(user_id)
+    except Exception:
+        pass
+    return None, False
+
+
 @content_bp.route("/subjects", methods=["GET"])
 def list_subjects():
     """
     Returns subjects for a grade.
     Grade comes from ?grade=... query param, or falls back to the logged-in
     user's grade if a valid token is sent (optional auth).
+    Paid subjects are marked "unlocked": true/false depending on whether
+    the requesting user has an active subscription.
     """
     grade = request.args.get("grade")
+    user, has_sub = _current_user_optional()
 
-    if not grade:
-        from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity as get_id
-        try:
-            verify_jwt_in_request(optional=True)
-            user_id = get_id()
-            if user_id:
-                user = User.query.get(user_id)
-                if user:
-                    grade = user.grade
-        except Exception:
-            pass
+    if not grade and user:
+        grade = user.grade
 
     query = Subject.query
     if grade:
         query = query.filter_by(grade=grade)
 
     subjects = query.order_by(Subject.order).all()
-    return jsonify({"success": True, "subjects": [s.to_dict() for s in subjects]})
+    return jsonify({
+        "success": True,
+        "subjects": [s.to_dict(unlocked=has_sub) for s in subjects],
+    })
 
 
 @content_bp.route("/subjects/<int:subject_id>", methods=["GET"])
@@ -45,7 +56,18 @@ def get_subject(subject_id):
     subject = Subject.query.get(subject_id)
     if not subject:
         return error("المادة غير موجودة", status=404)
-    return jsonify({"success": True, "subject": subject.to_dict(include_lessons=True)})
+
+    _, has_sub = _current_user_optional()
+
+    if subject.is_paid and not has_sub:
+        return jsonify({
+            "success": True,
+            "subject": subject.to_dict(include_lessons=False, unlocked=False),
+            "locked": True,
+            "message": "هذي مادة مدفوعة — فعّل اشتراكك لتقدر توصل للدروس",
+        })
+
+    return jsonify({"success": True, "subject": subject.to_dict(include_lessons=True, unlocked=True)})
 
 
 @content_bp.route("/lessons/<int:lesson_id>", methods=["GET"])
@@ -53,6 +75,12 @@ def get_lesson(lesson_id):
     lesson = Lesson.query.get(lesson_id)
     if not lesson:
         return error("الدرس غير موجود", status=404)
+
+    if lesson.subject.is_paid:
+        _, has_sub = _current_user_optional()
+        if not has_sub:
+            return error("هذا الدرس بمادة مدفوعة — فعّل اشتراكك أول", status=402)
+
     return jsonify({"success": True, "lesson": lesson.to_dict()})
 
 
@@ -63,6 +91,9 @@ def complete_lesson(lesson_id):
     lesson = Lesson.query.get(lesson_id)
     if not lesson:
         return error("الدرس غير موجود", status=404)
+
+    if lesson.subject.is_paid and not user_has_active_subscription(user_id):
+        return error("هذا الدرس بمادة مدفوعة — فعّل اشتراكك أول", status=402)
 
     progress = Progress.query.filter_by(user_id=user_id, lesson_id=lesson_id).first()
     if not progress:
@@ -82,12 +113,15 @@ def my_progress():
     """
     Returns overall progress summary for the logged-in student:
     completion % per subject, plus total lessons done.
+    Locked (paid, not subscribed) subjects are included but marked locked,
+    with lessons_total hidden as 0 done / not counted toward the overall %.
     """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     if not user:
         return error("المستخدم غير موجود", status=404)
 
+    has_sub = user_has_active_subscription(user_id)
     subjects = Subject.query.filter_by(grade=user.grade).order_by(Subject.order).all()
     completed_ids = {
         p.lesson_id for p in Progress.query.filter_by(user_id=user_id, completed=True).all()
@@ -97,17 +131,23 @@ def my_progress():
     total_lessons = 0
     total_done = 0
     for subject in subjects:
+        locked = subject.is_paid and not has_sub
         lesson_ids = [l.id for l in subject.lessons]
         done = len([lid for lid in lesson_ids if lid in completed_ids])
-        total_lessons += len(lesson_ids)
-        total_done += done
-        pct = round((done / len(lesson_ids)) * 100) if lesson_ids else 0
+
+        if not locked:
+            total_lessons += len(lesson_ids)
+            total_done += done
+
+        pct = round((done / len(lesson_ids)) * 100) if lesson_ids and not locked else 0
         summary.append({
             "subject_id": subject.id,
             "subject_name": subject.name,
             "icon": subject.icon,
-            "lessons_done": done,
-            "lessons_total": len(lesson_ids),
+            "is_paid": subject.is_paid,
+            "locked": locked,
+            "lessons_done": done if not locked else 0,
+            "lessons_total": len(lesson_ids) if not locked else len(lesson_ids),
             "percent": pct,
         })
 
