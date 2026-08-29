@@ -18,13 +18,17 @@ def create_app():
     bcrypt.init_app(app)
     JWTManager(app)
     mail.init_app(app)
-    CORS(app)  # allows the frontend (different origin) to call this API
+    CORS(app)
 
     # ---- Blueprints ----
     from routes.auth import auth_bp
     from routes.content import content_bp
+    from routes.admin import admin_bp
+    from routes.subscription import subscription_bp
     app.register_blueprint(auth_bp)
     app.register_blueprint(content_bp)
+    app.register_blueprint(admin_bp)
+    app.register_blueprint(subscription_bp)
 
     # ---- Health check ----
     @app.route("/api/health")
