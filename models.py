@@ -214,3 +214,85 @@ def user_has_active_subscription(user_id: int) -> bool:
         .first()
     )
     return sub is not None
+
+
+class Quiz(db.Model):
+    """اختبار قصير مرتبط بدرس معيّن — درس وحد ممكن يكون عنده اختبار وحد بس."""
+    __tablename__ = "quizzes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    lesson_id = db.Column(db.Integer, db.ForeignKey("lessons.id"), unique=True, nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+
+    lesson = db.relationship("Lesson")
+    questions = db.relationship("Question", backref="quiz", cascade="all, delete-orphan",
+                                 order_by="Question.order")
+
+    def to_dict(self, include_answers=False):
+        return {
+            "id": self.id,
+            "lesson_id": self.lesson_id,
+            "title": self.title,
+            "question_count": len(self.questions),
+            "questions": [q.to_dict(include_answers=include_answers) for q in self.questions],
+        }
+
+
+class Question(db.Model):
+    __tablename__ = "questions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey("quizzes.id"), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    order = db.Column(db.Integer, default=0)
+
+    choices = db.relationship("Choice", backref="question", cascade="all, delete-orphan",
+                               order_by="Choice.order")
+
+    def to_dict(self, include_answers=False):
+        return {
+            "id": self.id,
+            "text": self.text,
+            "choices": [c.to_dict(include_answer=include_answers) for c in self.choices],
+        }
+
+
+class Choice(db.Model):
+    __tablename__ = "choices"
+
+    id = db.Column(db.Integer, primary_key=True)
+    question_id = db.Column(db.Integer, db.ForeignKey("questions.id"), nullable=False)
+    text = db.Column(db.String(300), nullable=False)
+    is_correct = db.Column(db.Boolean, default=False, nullable=False)
+    order = db.Column(db.Integer, default=0)
+
+    def to_dict(self, include_answer=False):
+        data = {"id": self.id, "text": self.text}
+        if include_answer:
+            data["is_correct"] = self.is_correct
+        return data
+
+
+class QuizAttempt(db.Model):
+    """نتيجة محاولة طالب لاختبار معيّن."""
+    __tablename__ = "quiz_attempts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    quiz_id = db.Column(db.Integer, db.ForeignKey("quizzes.id"), nullable=False)
+    score = db.Column(db.Integer, nullable=False)      # عدد الإجابات الصحيحة
+    total = db.Column(db.Integer, nullable=False)       # إجمالي عدد الأسئلة
+    taken_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    quiz = db.relationship("Quiz")
+
+    def to_dict(self):
+        pct = round((self.score / self.total) * 100) if self.total else 0
+        return {
+            "id": self.id,
+            "quiz_id": self.quiz_id,
+            "score": self.score,
+            "total": self.total,
+            "percent": pct,
+            "taken_at": self.taken_at.isoformat(),
+        }
