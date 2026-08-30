@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مسار — لوحة الأدمن</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=El+Messiri:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --ink: #1A1030;
+  --panel: #241B3D;
+  --panel-2: #2E2350;
+  --gold: #FF6F5E;
+  --gold-soft: #FF9587;
+  --teal: #22B07D;
+  --teal-soft: #6EE7B7;
+  --text: #F7F3FF;
+  --muted: #A79FC7;
+  --line: rgba(247,243,255,0.10);
+  --danger: #F43F5E;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background: var(--ink); color: var(--text);
+  font-family: 'IBM Plex Sans Arabic', sans-serif;
+  min-height: 100vh;
+}
+.display { font-family:'El Messiri', serif; font-weight:700; }
+
+/* ---- LOGIN GATE ---- */
+#loginGate {
+  min-height: 100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.login-card {
+  width:100%; max-width:380px; background: var(--panel); border:1px solid var(--line);
+  border-radius:20px; padding:32px;
+}
+.login-card h1 { font-size:20px; margin-bottom:6px; }
+.login-card p { color: var(--muted); font-size:13px; margin-bottom:22px; }
+.field { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+.field label { font-size:12px; color: var(--muted); }
+.field input, .field select {
+  background: var(--panel-2); border:1px solid var(--line); border-radius:10px;
+  padding:11px 12px; color: var(--text); font-size:14px; font-family:inherit; outline:none;
+}
+.field input:focus, .field select:focus { border-color: var(--gold); }
+.btn {
+  background: var(--gold); color: var(--ink); font-weight:700; font-size:14px;
+  padding:12px; border-radius:10px; border:none; cursor:pointer; width:100%;
+}
+.btn:disabled { opacity:0.6; cursor:not-allowed; }
+.btn-ghost {
+  background: var(--panel-2); color: var(--text); border:1px solid var(--line);
+  font-size:13px; padding:9px 16px; border-radius:8px; cursor:pointer;
+}
+.btn-danger { background: var(--danger); color:#fff; }
+.msg { font-size:13px; border-radius:8px; padding:10px 12px; margin-top:12px; display:none; }
+.msg.show { display:block; }
+.msg.error { background: rgba(244,63,94,0.12); color:#FB7185; border:1px solid rgba(244,63,94,0.3); }
+.msg.success { background: rgba(34,176,125,0.12); color: var(--teal-soft); border:1px solid rgba(34,176,125,0.3); }
+
+/* ---- APP LAYOUT ---- */
+#app { display:none; }
+#app.show { display:block; }
+
+.topbar {
+  position:sticky; top:0; z-index:10; background: rgba(26,16,48,0.9); backdrop-filter: blur(10px);
+  border-bottom:1px solid var(--line); padding:16px 20px; display:flex; align-items:center;
+  justify-content:space-between; flex-wrap:wrap; gap:10px;
+}
+.logo { display:flex; align-items:center; gap:8px; font-size:18px; }
+.logo-dot { width:8px; height:8px; border-radius:50%; background: var(--gold); box-shadow:0 0 10px var(--gold); }
+.tag { font-size:11px; background: var(--panel-2); color: var(--muted); padding:3px 10px; border-radius:999px; }
+
+.tabs { display:flex; gap:6px; padding:14px 20px 0; overflow-x:auto; }
+.tab-btn {
+  flex-shrink:0; background:none; border:1px solid var(--line); color: var(--muted);
+  padding:9px 16px; border-radius:999px; font-size:13px; cursor:pointer; font-family:inherit;
+}
+.tab-btn.active { background: var(--gold); color: var(--ink); border-color: var(--gold); font-weight:700; }
+
+.page { padding:20px; max-width:1000px; margin:0 auto; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+
+/* ---- STAT CARDS ---- */
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+@media (max-width:700px) { .stats-grid { grid-template-columns:repeat(2,1fr); } }
+.stat-card { background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px; }
+.stat-card .n { font-size:24px; font-family:'El Messiri',serif; color: var(--gold); }
+.stat-card .l { font-size:12px; color: var(--muted); margin-top:4px; }
+
+/* ---- SECTION ---- */
+.section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
+.section-head h2 { font-size:16px; }
+
+.card-list { display:flex; flex-direction:column; gap:10px; margin-bottom:24px; }
+.item-row {
+  background: var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 16px;
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+.item-icon { width:36px; height:36px; border-radius:10px; background: var(--panel-2);
+  display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+.item-body { flex:1; min-width:150px; }
+.item-title { font-size:14px; font-weight:600; }
+.item-meta { font-size:12px; color: var(--muted); margin-top:2px; }
+.badge { font-size:11px; padding:3px 9px; border-radius:999px; }
+.badge.paid { background: rgba(255,111,94,0.15); color: var(--gold-soft); }
+.badge.free { background: rgba(34,176,125,0.15); color: var(--teal-soft); }
+.badge.used { background: rgba(244,63,94,0.12); color: #FB7185; }
+.badge.avail { background: rgba(34,176,125,0.15); color: var(--teal-soft); }
+
+.form-box { background: var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; margin-bottom:24px; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width:600px) { .form-grid { grid-template-columns:1fr; } }
+.form-actions { display:flex; gap:10px; margin-top:14px; }
+.form-actions .btn { width:auto; padding:11px 22px; }
+
+.toggle {
+  display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color: var(--muted);
+}
+.toggle input { accent-color: var(--gold); width:16px; height:16px; }
+
+.key-code {
+  font-family: monospace; font-size:13px; background: var(--panel-2); padding:4px 10px;
+  border-radius:6px; letter-spacing:0.5px;
+}
+.copy-btn { font-size:11px; color: var(--gold-soft); cursor:pointer; background:none; border:none; font-family:inherit; }
+
+.empty { color: var(--muted); font-size:13px; text-align:center; padding:20px; }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN GATE ============ -->
+<div id="loginGate">
+  <div class="login-card">
+    <div class="logo" style="margin-bottom:18px;"><span class="logo-dot"></span><span class="display">مسار</span></div>
+    <h1>لوحة الأدمن</h1>
+    <p>سجل دخولك بحساب صلاحياته "أدمن"</p>
+    <form onsubmit="return doLogin(event)">
+      <div class="field">
+        <label>البريد الإلكتروني</label>
+        <input type="email" id="loginEmail" placeholder="admin@example.com" required>
+      </div>
+      <div class="field">
+        <label>كلمة المرور</label>
+        <input type="password" id="loginPass" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="btn" id="loginBtn">دخول</button>
+      <div class="msg" id="loginMsg"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <div class="topbar">
+    <div class="logo"><span class="logo-dot"></span><span class="display">مسار</span><span class="tag">لوحة الأدمن</span></div>
+    <button class="btn-ghost" onclick="logout()">تسجيل خروج</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="overview" onclick="showTab('overview')">نظرة عامة</button>
+    <button class="tab-btn" data-tab="subjects" onclick="showTab('subjects')">المواد والدروس</button>
+    <button class="tab-btn" data-tab="plans" onclick="showTab('plans')">خطط الاشتراك</button>
+    <button class="tab-btn" data-tab="keys" onclick="showTab('keys')">مفاتيح التفعيل</button>
+  </div>
+
+  <div class="page">
+
+    <!-- ===== OVERVIEW ===== -->
+    <div class="tab-panel active" id="tab-overview">
+      <div class="stats-grid">
+        <div class="stat-card"><div class="n" id="statStudents">—</div><div class="l">إجمالي الطلاب</div></div>
+        <div class="stat-card"><div class="n" id="statActiveSubs">—</div><div class="l">اشتراكات فعّالة</div></div>
+        <div class="stat-card"><div class="n" id="statTotalKeys">—</div><div class="l">مفاتيح تولّدت</div></div>
+        <div class="stat-card"><div class="n" id="statUsedKeys">—</div><div class="l">مفاتيح استُخدمت</div></div>
+      </div>
+      <div class="empty">هذي نظرة سريعة — استخدم التبويبات فوق لإدارة المواد والخطط والمفاتيح</div>
+    </div>
+
+    <!-- ===== SUBJECTS ===== -->
+    <div class="tab-panel" id="tab-subjects">
+      <div class="form-box">
+        <div class="section-head"><h2>إضافة مادة جديدة</h2></div>
+        <form onsubmit="return createSubject(event)">
+          <div class="form-grid">
+            <div class="field"><label>اسم المادة</label><input type="text" id="newSubjectName" placeholder="مثال: الأحياء" required></div>
+            <div class="field"><label>الصف الدراسي</label>
+              <select id="newSubjectGrade" required>
+                <option value="">اختر الصف</option>
+                <option>السادس ابتدائي</option><option>الأول متوسط</option><option>الثاني متوسط</option>
+                <option>الثالث متوسط</option><option>الرابع إعدادي</option><option>الخامس إعدادي</option><option>السادس إعدادي</option>
+              </select>
+            </div>
+            <div class="field"><label>أيقونة (إيموجي)</label><input type="text" id="newSubjectIcon" placeholder="📘" maxlength="4"></div>
+            <div class="field" style="justify-content:flex-end;">
+              <label class="toggle"><input type="checkbox" id="newSubjectPaid"> مادة مدفوعة</label>
+            </div>
+          </div>
+          <div class="form-actions"><button type="submit" class="btn">إضافة المادة</button></div>
+        </form>
+      </div>
+
+      <div class="section-head"><h2>كل المواد</h2></div>
+      <div class="card-list" id="subjectsList"><div class="empty">...جاري التحميل</div></div>
+    </div>
+
+    <!-- ===== PLANS ===== -->
+    <div class="tab-panel" id="tab-plans">
+      <div class="form-box">
+        <div class="section-head"><h2>إضافة خطة اشتراك</h2></div>
+        <form onsubmit="return createPlan(event)">
+          <div class="form-grid">
+            <div class="field"><label>اسم الخطة</label><input type="text" id="newPlanName" placeholder="مثال: اشتراك شهري" required></div>
+            <div class="field"><label>المدة (باليوم)</label><input type="number" id="newPlanDuration" placeholder="30" min="1" required></div>
+            <div class="field"><label>السعر (دينار عراقي)</label><input type="number" id="newPlanPrice" placeholder="15000" min="0" required></div>
+          </div>
+          <div class="form-actions"><button type="submit" class="btn">إضافة الخطة</button></div>
+        </form>
+      </div>
+
+      <div class="section-head"><h2>الخطط الحالية — عدّل السعر أي وقت</h2></div>
+      <div class="card-list" id="plansList"><div class="empty">...جاري التحميل</div></div>
+    </div>
+
+    <!-- ===== KEYS ===== -->
+    <div class="tab-panel" id="tab-keys">
+      <div class="form-box">
+        <div class="section-head"><h2>توليد مفاتيح تفعيل</h2></div>
+        <form onsubmit="return generateKeys(event)">
+          <div class="form-grid">
+            <div class="field"><label>الخطة</label><select id="keyPlanSelect" required><option value="">اختر خطة</option></select></div>
+            <div class="field"><label>عدد المفاتيح</label><input type="number" id="keyCount" placeholder="1" min="1" max="500" value="1" required></div>
+          </div>
+          <div class="form-actions"><button type="submit" class="btn">ولّد المفاتيح</button></div>
+        </form>
+        <div class="msg" id="keysMsg"></div>
+      </div>
+
+      <div class="section-head"><h2>آخر المفاتيح</h2></div>
+      <div class="card-list" id="keysList"><div class="empty">...جاري التحميل</div></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API_BASE = 'http://localhost:5000/api';
+let token = sessionStorage.getItem('masar_admin_token');
+let plansCache = [];
+
+function showMsg(id, text, type) {
+  const el = document.getElementById(id);
+  el.textContent = text; el.className = 'msg show ' + type;
+}
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) throw new Error(data.error || 'صار خطأ');
+  return data;
+}
+
+async function doLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = '...جاري الدخول';
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'فشل الدخول');
+
+    if (data.user.role !== 'admin') {
+      throw new Error('هذا الحساب مو أدمن — استخدم حساب مخصص للوحة التحكم');
+    }
+
+    token = data.access_token;
+    sessionStorage.setItem('masar_admin_token', token);
+    enterApp();
+  } catch (err) {
+    showMsg('loginMsg', err.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'دخول';
+  }
+  return false;
+}
+
+function logout() {
+  sessionStorage.removeItem('masar_admin_token');
+  token = null;
+  document.getElementById('app').classList.remove('show');
+  document.getElementById('loginGate').style.display = 'flex';
+}
+
+function enterApp() {
+  document.getElementById('loginGate').style.display = 'none';
+  document.getElementById('app').classList.add('show');
+  loadOverview();
+  loadSubjects();
+  loadPlans();
+  loadKeys();
+}
+
+function showTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+}
+
+// ---------- OVERVIEW ----------
+async function loadOverview() {
+  try {
+    const data = await apiFetch('/admin/stats');
+    document.getElementById('statStudents').textContent = data.total_students;
+    document.getElementById('statActiveSubs').textContent = data.active_subscriptions;
+    document.getElementById('statTotalKeys').textContent = data.total_keys;
+    document.getElementById('statUsedKeys').textContent = data.used_keys;
+  } catch (err) { console.error(err); }
+}
+
+// ---------- SUBJECTS ----------
+async function loadSubjects() {
+  const container = document.getElementById('subjectsList');
+  try {
+    const data = await apiFetch('/admin/subjects');
+    if (!data.subjects.length) { container.innerHTML = '<div class="empty">ماكو مواد مضافة بعد</div>'; return; }
+    container.innerHTML = data.subjects.map(s => `
+      <div class="item-row">
+        <div class="item-icon">${s.icon}</div>
+        <div class="item-body">
+          <div class="item-title">${s.name} <span class="badge ${s.is_paid ? 'paid' : 'free'}">${s.is_paid ? 'مدفوعة' : 'مجانية'}</span></div>
+          <div class="item-meta">${s.grade} · ${s.lesson_count} درس</div>
+        </div>
+        <button class="btn-ghost" onclick="toggleSubjectPaid(${s.id}, ${!s.is_paid})">${s.is_paid ? 'خلها مجانية' : 'خلها مدفوعة'}</button>
+        <button class="btn-ghost btn-danger" onclick="deleteSubject(${s.id})">حذف</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    container.innerHTML = `<div class="empty">تعذر التحميل: ${err.message}</div>`;
+  }
+}
+
+async function createSubject(e) {
+  e.preventDefault();
+  const name = document.getElementById('newSubjectName').value.trim();
+  const grade = document.getElementById('newSubjectGrade').value;
+  const icon = document.getElementById('newSubjectIcon').value.trim() || '📘';
+  const is_paid = document.getElementById('newSubjectPaid').checked;
+
+  try {
+    await apiFetch('/admin/subjects', { method: 'POST', body: JSON.stringify({ name, grade, icon, is_paid }) });
+    document.getElementById('newSubjectName').value = '';
+    document.getElementById('newSubjectGrade').value = '';
+    document.getElementById('newSubjectIcon').value = '';
+    document.getElementById('newSubjectPaid').checked = false;
+    loadSubjects();
+  } catch (err) { alert(err.message); }
+  return false;
+}
+
+async function toggleSubjectPaid(id, newValue) {
+  try {
+    await apiFetch(`/admin/subjects/${id}`, { method: 'PATCH', body: JSON.stringify({ is_paid: newValue }) });
+    loadSubjects();
+  } catch (err) { alert(err.message); }
+}
+
+async function deleteSubject(id) {
+  if (!confirm('متأكد تريد تحذف هذي المادة؟ راح تنحذف كل دروسها معها.')) return;
+  try {
+    await apiFetch(`/admin/subjects/${id}`, { method: 'DELETE' });
+    loadSubjects();
+  } catch (err) { alert(err.message); }
+}
+
+// ---------- PLANS ----------
+async function loadPlans() {
+  const container = document.getElementById('plansList');
+  try {
+    const data = await apiFetch('/admin/plans');
+    plansCache = data.plans;
+    populatePlanSelect();
+
+    if (!data.plans.length) { container.innerHTML = '<div class="empty">ماكو خطط مضافة بعد</div>'; return; }
+    container.innerHTML = data.plans.map(p => `
+      <div class="item-row">
+        <div class="item-body">
+          <div class="item-title">${p.name} <span class="badge ${p.is_active ? 'free' : 'used'}">${p.is_active ? 'مفعّلة' : 'موقوفة'}</span></div>
+          <div class="item-meta">${p.duration_days} يوم</div>
+        </div>
+        <div class="field" style="margin:0; min-width:130px;">
+          <input type="number" value="${p.price}" id="price-${p.id}" style="width:100%;">
+        </div>
+        <button class="btn-ghost" onclick="updatePlanPrice(${p.id})">حفظ السعر</button>
+        <button class="btn-ghost" onclick="togglePlanActive(${p.id}, ${!p.is_active})">${p.is_active ? 'أوقفها' : 'فعّلها'}</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    container.innerHTML = `<div class="empty">تعذر التحميل: ${err.message}</div>`;
+  }
+}
+
+function populatePlanSelect() {
+  const select = document.getElementById('keyPlanSelect');
+  select.innerHTML = '<option value="">اختر خطة</option>' +
+    plansCache.filter(p => p.is_active).map(p => `<option value="${p.id}">${p.name} — ${p.price} د.ع</option>`).join('');
+}
+
+async function createPlan(e) {
+  e.preventDefault();
+  const name = document.getElementById('newPlanName').value.trim();
+  const duration_days = parseInt(document.getElementById('newPlanDuration').value, 10);
+  const price = parseInt(document.getElementById('newPlanPrice').value, 10);
+
+  try {
+    await apiFetch('/admin/plans', { method: 'POST', body: JSON.stringify({ name, duration_days, price }) });
+    document.getElementById('newPlanName').value = '';
+    document.getElementById('newPlanDuration').value = '';
+    document.getElementById('newPlanPrice').value = '';
+    loadPlans();
+  } catch (err) { alert(err.message); }
+  return false;
+}
+
+async function updatePlanPrice(id) {
+  const price = parseInt(document.getElementById(`price-${id}`).value, 10);
+  try {
+    await apiFetch(`/admin/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ price }) });
+    loadPlans();
+  } catch (err) { alert(err.message); }
+}
+
+async function togglePlanActive(id, newValue) {
+  try {
+    await apiFetch(`/admin/plans/${id}`, { method: 'PATCH', body: JSON.stringify({ is_active: newValue }) });
+    loadPlans();
+  } catch (err) { alert(err.message); }
+}
+
+// ---------- KEYS ----------
+async function loadKeys() {
+  const container = document.getElementById('keysList');
+  try {
+    const data = await apiFetch('/admin/keys');
+    if (!data.keys.length) { container.innerHTML = '<div class="empty">ماكو مفاتيح متولّدة بعد</div>'; return; }
+    container.innerHTML = data.keys.map(k => `
+      <div class="item-row">
+        <div class="item-body">
+          <span class="key-code" id="code-${k.id}">${k.code}</span>
+          <button class="copy-btn" onclick="copyCode(${k.id})">نسخ</button>
+        </div>
+        <div class="item-meta">${k.plan_name}</div>
+        <span class="badge ${k.is_used ? 'used' : 'avail'}">${k.is_used ? 'مستخدم' : 'متاح'}</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    container.innerHTML = `<div class="empty">تعذر التحميل: ${err.message}</div>`;
+  }
+}
+
+async function generateKeys(e) {
+  e.preventDefault();
+  const plan_id = parseInt(document.getElementById('keyPlanSelect').value, 10);
+  const count = parseInt(document.getElementById('keyCount').value, 10);
+
+  if (!plan_id) { showMsg('keysMsg', 'اختر خطة أول', 'error'); return false; }
+
+  try {
+    const data = await apiFetch('/admin/keys/generate', { method: 'POST', body: JSON.stringify({ plan_id, count }) });
+    showMsg('keysMsg', data.message, 'success');
+    loadKeys();
+    loadOverview();
+  } catch (err) {
+    showMsg('keysMsg', err.message, 'error');
+  }
+  return false;
+}
+
+function copyCode(id) {
+  const text = document.getElementById(`code-${id}`).textContent;
+  navigator.clipboard.writeText(text);
+}
+
+// ---------- INIT ----------
+if (token) { enterApp(); }
+</script>
+
+</body>
+</html>
