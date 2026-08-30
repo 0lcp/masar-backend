@@ -4,7 +4,7 @@ from datetime import datetime
 
 from flask import Blueprint, request, jsonify
 
-from models import db, Subject, Lesson, SubscriptionPlan, RedemptionKey, GRADES
+from models import db, Subject, Lesson, SubscriptionPlan, RedemptionKey, GRADES, Quiz, Question, Choice
 from utils.decorators import admin_required
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -26,7 +26,7 @@ def generate_code(length=10):
 @admin_required
 def list_all_subjects():
     subjects = Subject.query.order_by(Subject.grade, Subject.order).all()
-    return jsonify({"success": True, "subjects": [s.to_dict() for s in subjects]})
+    return jsonify({"success": True, "subjects": [s.to_dict(include_lessons=True) for s in subjects]})
 
 
 @admin_bp.route("/subjects", methods=["POST"])
@@ -258,7 +258,200 @@ def delete_key(key_id):
     return jsonify({"success": True, "message": "تم حذف المفتاح"})
 
 
-# ============ STUDENTS (read-only overview) ============
+# ============ QUIZZES ============
+
+@admin_bp.route("/lessons/<int:lesson_id>/quiz", methods=["GET"])
+@admin_required
+def get_lesson_quiz(lesson_id):
+    quiz = Quiz.query.filter_by(lesson_id=lesson_id).first()
+    if not quiz:
+        return jsonify({"success": True, "quiz": None})
+    return jsonify({"success": True, "quiz": quiz.to_dict(include_answers=True)})
+
+
+@admin_bp.route("/lessons/<int:lesson_id>/quiz", methods=["POST"])
+@admin_required
+def create_quiz(lesson_id):
+    """
+    ينشئ اختبار لدرس معيّن دفعة وحدة — عنوان + قائمة أسئلة، كل سؤال معه
+    خياراته وتحديد الجواب الصحيح.
+    body: {
+      "title": "اختبار الوحدة الأولى",
+      "questions": [
+        {"text": "...", "choices": [{"text": "...", "is_correct": true}, ...]}
+      ]
+    }
+    """
+    lesson = Lesson.query.get(lesson_id)
+    if not lesson:
+        return error("الدرس غير موجود", status=404)
+
+    if Quiz.query.filter_by(lesson_id=lesson_id).first():
+        return error("هذا الدرس عنده اختبار أصلاً — عدّله أو احذفه أول", status=409)
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    questions = data.get("questions") or []
+
+    if not title:
+        return error("عنوان الاختبار مطلوب")
+    if not questions:
+        return error("أضيف سؤال وحد على الأقل")
+
+    quiz = Quiz(lesson_id=lesson_id, title=title)
+    db.session.add(quiz)
+    db.session.flush()
+
+    for q_order, q in enumerate(questions):
+        q_text = (q.get("text") or "").strip()
+        choices = q.get("choices") or []
+        if not q_text or len(choices) < 2:
+            db.session.rollback()
+            return error(f"السؤال رقم {q_order + 1} ناقص (يحتاج نص وخيارين على الأقل)")
+        if not any(c.get("is_correct") for c in choices):
+            db.session.rollback()
+            return error(f"السؤال رقم {q_order + 1} لازم يكون فيه جواب صحيح وحد محدد")
+
+        question = Question(quiz_id=quiz.id, text=q_text, order=q_order)
+        db.session.add(question)
+        db.session.flush()
+
+        for c_order, c in enumerate(choices):
+            choice = Choice(
+                question_id=question.id,
+                text=(c.get("text") or "").strip(),
+                is_correct=bool(c.get("is_correct")),
+                order=c_order,
+            )
+            db.session.add(choice)
+
+    db.session.commit()
+    return jsonify({"success": True, "quiz": quiz.to_dict(include_answers=True)}), 201
+
+
+@admin_bp.route("/quizzes/<int:quiz_id>", methods=["DELETE"])
+@admin_required
+def delete_quiz(quiz_id):
+    quiz = Quiz.query.get(quiz_id)
+    if not quiz:
+        return error("الاختبار غير موجود", status=404)
+    db.session.delete(quiz)
+    db.session.commit()
+    return jsonify({"success": True, "message": "تم حذف الاختبار"})
+
+
+# ============ STUDENTS ============
+
+@admin_bp.route("/students", methods=["GET"])
+@admin_required
+def list_students():
+    """
+    قائمة الطلاب مع إمكانية بحث بالاسم أو الإيميل، وفلترة بالصف.
+    ?search=...&grade=...
+    """
+    from models import User, user_has_active_subscription
+
+    query = User.query.filter_by(role="student")
+
+    search = request.args.get("search", "").strip()
+    if search:
+        like = f"%{search}%"
+        query = query.filter(db.or_(User.full_name.ilike(like), User.email.ilike(like)))
+
+    grade = request.args.get("grade", "").strip()
+    if grade:
+        query = query.filter_by(grade=grade)
+
+    students = query.order_by(User.created_at.desc()).limit(200).all()
+
+    result = []
+    for s in students:
+        data = s.to_dict()
+        data["has_active_subscription"] = user_has_active_subscription(s.id)
+        result.append(data)
+
+    return jsonify({"success": True, "students": result})
+
+
+@admin_bp.route("/students/<int:user_id>", methods=["GET"])
+@admin_required
+def get_student(user_id):
+    from models import User, UserSubscription, user_has_active_subscription
+
+    student = User.query.get(user_id)
+    if not student or student.role != "student":
+        return error("الطالب غير موجود", status=404)
+
+    subs = UserSubscription.query.filter_by(user_id=user_id).order_by(UserSubscription.end_date.desc()).all()
+
+    data = student.to_dict()
+    data["has_active_subscription"] = user_has_active_subscription(user_id)
+    data["subscriptions"] = [s.to_dict() for s in subs]
+    return jsonify({"success": True, "student": data})
+
+
+@admin_bp.route("/students/<int:user_id>/grant-subscription", methods=["POST"])
+@admin_required
+def grant_subscription(user_id):
+    """
+    يعطي الأدمن صلاحية يفعّل اشتراك لطالب يدوياً بدون مفتاح —
+    مفيد لحالات خاصة (منحة، تجربة مجانية، حل مشكلة دفع).
+    """
+    from models import User, UserSubscription
+    from datetime import timedelta
+
+    student = User.query.get(user_id)
+    if not student or student.role != "student":
+        return error("الطالب غير موجود", status=404)
+
+    data = request.get_json(silent=True) or {}
+    plan_id = data.get("plan_id")
+    plan = SubscriptionPlan.query.get(plan_id) if plan_id else None
+    if not plan:
+        return error("اختر خطة صحيحة")
+
+    existing = (
+        UserSubscription.query
+        .filter_by(user_id=user_id)
+        .filter(UserSubscription.end_date >= datetime.utcnow())
+        .order_by(UserSubscription.end_date.desc())
+        .first()
+    )
+    start_from = existing.end_date if existing else datetime.utcnow()
+    end_date = start_from + timedelta(days=plan.duration_days)
+
+    subscription = UserSubscription(user_id=user_id, plan_id=plan.id, end_date=end_date)
+    db.session.add(subscription)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"تم منح {student.full_name} اشتراك {plan.name}",
+        "subscription": subscription.to_dict(),
+    }), 201
+
+
+@admin_bp.route("/students/<int:user_id>/role", methods=["PATCH"])
+@admin_required
+def update_student_role(user_id):
+    """يرفّع طالب لأدمن، أو ينزّل أدمن لطالب عادي."""
+    from models import User
+
+    target = User.query.get(user_id)
+    if not target:
+        return error("المستخدم غير موجود", status=404)
+
+    data = request.get_json(silent=True) or {}
+    new_role = data.get("role")
+    if new_role not in ("student", "admin"):
+        return error("الدور لازم يكون student أو admin")
+
+    target.role = new_role
+    db.session.commit()
+    return jsonify({"success": True, "user": target.to_dict()})
+
+
+# ============ STATS (overview) ============
 
 @admin_bp.route("/stats", methods=["GET"])
 @admin_required
