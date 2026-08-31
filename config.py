@@ -30,6 +30,18 @@ class Config:
     # ---- Frontend URL (used inside email links) ----
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5500")
 
+    # ---- Allowed origins for CORS (comma-separated) ----
+    # لازم يحتوي رابط موقعك الفعلي (Netlify مثلاً) + أي روابط تجربة محلية.
+    # مثال بمتغير البيئة: ALLOWED_ORIGINS=https://masar-frontend.netlify.app,http://localhost:5500
+    ALLOWED_ORIGINS = [
+        origin.strip()
+        for origin in os.environ.get(
+            "ALLOWED_ORIGINS",
+            "http://localhost:5500,http://127.0.0.1:5500"
+        ).split(",")
+        if origin.strip()
+    ]
+
     # ---- Token expiry ----
     EMAIL_TOKEN_MAX_AGE = 60 * 60 * 24        # 24 hours to verify email
     RESET_TOKEN_MAX_AGE = 60 * 60             # 1 hour to reset password
