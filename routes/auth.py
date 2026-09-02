@@ -10,23 +10,53 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
-# ذاكرة مؤقتة لتخزين رموز التوثيق (OTP) بأسلوب بسيط وقوي
+# ذاكرة مؤقتة لتخزين الرموز
 RESET_CODES = {}
+REGISTER_CODES = {}
 
 
 def error(message, status=400):
     return jsonify({"success": False, "error": message}), status
 
 
+@auth_bp.route("/send-register-otp", methods=["POST"])
+def send_register_otp():
+    from app import mail
+
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+
+    if not EMAIL_RE.match(email):
+        return error("البريد الإلكتروني غير صحيح")
+
+    if User.query.filter_by(email=email).first():
+        return error("هذا البريد مسجل من قبل", status=409)
+
+    # توليد رمز OTP لإنشاء الحساب
+    code = str(random.randint(100000, 999999))
+    REGISTER_CODES[email] = code
+
+    try:
+        # استخدام دالة الإرسال المتوفرة
+        send_reset_email(mail, email, "مستخدم جديد", code)
+    except Exception as exc:
+        current_app.logger.error(f"Could not send register OTP: {exc}")
+        return error("حدث خطأ أثناء إرسال رمز التوثيق", status=500)
+
+    return jsonify({
+        "success": True,
+        "message": "تم إرسال رمز التوثيق إلى بريدك الإلكتروني"
+    })
+
+
 @auth_bp.route("/register", methods=["POST"])
 def register():
-    from app import mail  # local import avoids circular import
-
     data = request.get_json(silent=True) or {}
     full_name = (data.get("full_name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
     grade = data.get("grade") or ""
+    code = str(data.get("code") or "").strip()
 
     # ---- validation ----
     if len(full_name) < 3:
@@ -38,6 +68,11 @@ def register():
     if grade not in GRADES:
         return error("اختر صف دراسي صحيح")
 
+    # التحقق من رمز التوثيق
+    saved_code = REGISTER_CODES.get(email)
+    if not saved_code or saved_code != code:
+        return error("رمز التوثيق غير صحيح أو منتهي الصلاحية", status=400)
+
     if User.query.filter_by(email=email).first():
         return error("هذا البريد مسجل من قبل", status=409)
 
@@ -48,18 +83,15 @@ def register():
     db.session.add(user)
     db.session.commit()
 
-    try:
-        send_verification_email(mail, email, full_name)
-    except Exception as exc:
-        current_app.logger.error(f"Could not send verification email: {exc}")
+    # مسح الرمز من الذاكرة
+    REGISTER_CODES.pop(email, None)
 
-    # إنشاء التوكن فور التسجيل لراحة المستخدم
     access_token = create_access_token(identity=str(user.id))
 
     return jsonify({
         "success": True,
         "token": access_token,
-        "message": "تم إنشاء الحساب بنجاح.",
+        "message": "تم إنشاء الحساب وتأكيده بنجاح.",
         "user": user.to_dict(),
     }), 201
 
@@ -112,22 +144,18 @@ def forgot_password():
         return error("يرجى إدخال البريد الإلكتروني")
 
     user = User.query.filter_by(email=email).first()
-    if not user:
-        return error("لم نجد حساباً مرتبطاً بهذا البريد الإلكتروني", status=404)
+    if user:
+        code = str(random.randint(100000, 999999))
+        RESET_CODES[email] = code
 
-    # توليد رمز توثيق OTP من 6 أرقام
-    code = str(random.randint(100000, 999999))
-    RESET_CODES[email] = code
-
-    try:
-        send_reset_email(mail, user.email, user.full_name, code)
-    except Exception as exc:
-        current_app.logger.error(f"Could not send reset email: {exc}")
-        return error("حدث خطأ أثناء إرسال البريد الإلكتروني", status=500)
+        try:
+            send_reset_email(mail, user.email, user.full_name, code)
+        except Exception as exc:
+            current_app.logger.error(f"Could not send reset email: {exc}")
 
     return jsonify({
         "success": True,
-        "message": "تم إرسال رمز التوثيق إلى بريدك الإلكتروني بنجاح",
+        "message": "إذا كان البريد مسجلاً لدينا فستتلقى رمز التوثيق قريباً",
     })
 
 
@@ -155,7 +183,6 @@ def reset_password():
     user.set_password(new_password)
     db.session.commit()
 
-    # مسح الرمز بعد التغيير بنجاح
     RESET_CODES.pop(email, None)
 
     return jsonify({"success": True, "message": "تم تغيير كلمة المرور بنجاح"})
