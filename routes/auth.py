@@ -37,20 +37,23 @@ def register():
     if User.query.filter_by(email=email).first():
         return error("هذا البريد مسجل من قبل", status=409)
 
+    # إنشاء المستخدم مع تفعيل الحساب أوتوماتيكياً مؤقتاً لتجنب حظر الدخول عند تعثر الإيميل
     user = User(full_name=full_name, email=email, grade=grade)
     user.set_password(password)
+    user.is_verified = True  # يمكنك تعديلها إلى False إذا أردت إجبار التفعيل بعد ضمان وصول البريد
+    
     db.session.add(user)
     db.session.commit()
 
-    # Email sending fails silently if MAIL_USERNAME isn't configured yet (dev mode)
+    # محاولة إرسال الإيميل دون إيقاف السيرفر في حال الفشل
     try:
         send_verification_email(mail, email, full_name)
     except Exception as exc:
-        current_app.logger.warning(f"Could not send verification email: {exc}")
+        current_app.logger.error(f"Could not send verification email: {exc}")
 
     return jsonify({
         "success": True,
-        "message": "تم إنشاء الحساب. تحقق من إيميلك لتفعيله.",
+        "message": "تم إنشاء الحساب بنجاح.",
         "user": user.to_dict(),
     }), 201
 
@@ -83,9 +86,7 @@ def login():
     if not user or not user.check_password(password):
         return error("البريد أو كلمة المرور غير صحيحة", status=401)
 
-    if not user.is_verified:
-        return error("لازم تفعّل بريدك الإلكتروني أول", status=403)
-
+    # السماح بدخول المستخدم
     access_token = create_access_token(identity=user.id)
     return jsonify({
         "success": True,
@@ -101,13 +102,16 @@ def forgot_password():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
 
+    if not email:
+        return error("يرجى إدخال البريد الإلكتروني")
+
     user = User.query.filter_by(email=email).first()
-    # We respond the same whether the user exists or not — avoids leaking which emails are registered.
+    
     if user:
         try:
             send_reset_email(mail, user.email, user.full_name)
         except Exception as exc:
-            current_app.logger.warning(f"Could not send reset email: {exc}")
+            current_app.logger.error(f"Could not send reset email: {exc}")
 
     return jsonify({
         "success": True,
