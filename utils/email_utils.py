@@ -57,3 +57,20 @@ def send_reset_email(mail, user_email: str, full_name: str, code: str):
     </div>
     """
     send_email(mail, "رمز توثيق استعادة كلمة المرور — مسار", user_email, html)
+
+
+def send_register_otp_email(mail, user_email: str, full_name: str, code: str):
+    html = f"""
+    <div style="direction: rtl; text-align: right; font-family: sans-serif; padding: 25px; background-color: #241B3D; color: #F7F3FF; border-radius: 12px; border: 1px solid rgba(247,243,255,0.1);">
+      <h2 style="color: #FF6F5E; margin-top: 0;">أهلاً بك 👋</h2>
+      <p style="font-size: 15px; color: #F7F3FF;">شكراً لانضمامك إلى <b>منصة مسار</b>. أكمل إنشاء حسابك باستخدام رمز التوثيق التالي:</p>
+      
+      <div style="background-color: #2E2350; padding: 18px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #FF9587; border-radius: 10px; border: 1px dashed #FF6F5E; margin: 15px 0;">
+        {code}
+      </div>
+      
+      <p style="font-size: 13px; color: #A79FC7; margin-top: 15px;">أدخل هذا الرمز في صفحة التسجيل لتأكيد حسابك.</p>
+      <p style="font-size: 12px; color: #888; margin-top: 20px; border-top: 1px solid rgba(247,243,255,0.08); padding-top: 12px;">إذا لم تقم بإنشاء حساب، يمكنك تجاهل هذا البريد الإلكتروني.</p>
+    </div>
+    """
+    send_email(mail, "رمز توثيق إنشاء الحساب — مسار", user_email, html)
