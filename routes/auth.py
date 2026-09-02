@@ -1,4 +1,5 @@
 import re
+import random
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 
@@ -8,6 +9,9 @@ from utils.email_utils import send_verification_email, send_reset_email, verify_
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+# ذاكرة مؤقتة لتخزين رموز التوثيق (OTP) بأسلوب بسيط وقوي
+RESET_CODES = {}
 
 
 def error(message, status=400):
@@ -37,22 +41,24 @@ def register():
     if User.query.filter_by(email=email).first():
         return error("هذا البريد مسجل من قبل", status=409)
 
-    # إنشاء المستخدم مع تفعيل الحساب أوتوماتيكياً مؤقتاً لتجنب حظر الدخول عند تعثر الإيميل
     user = User(full_name=full_name, email=email, grade=grade)
     user.set_password(password)
-    user.is_verified = True  # يمكنك تعديلها إلى False إذا أردت إجبار التفعيل بعد ضمان وصول البريد
+    user.is_verified = True
     
     db.session.add(user)
     db.session.commit()
 
-    # محاولة إرسال الإيميل دون إيقاف السيرفر في حال الفشل
     try:
         send_verification_email(mail, email, full_name)
     except Exception as exc:
         current_app.logger.error(f"Could not send verification email: {exc}")
 
+    # إنشاء التوكن فور التسجيل لراحة المستخدم
+    access_token = create_access_token(identity=str(user.id))
+
     return jsonify({
         "success": True,
+        "token": access_token,
         "message": "تم إنشاء الحساب بنجاح.",
         "user": user.to_dict(),
     }), 201
@@ -63,7 +69,7 @@ def verify_email():
     data = request.get_json(silent=True) or {}
     token = data.get("token", "")
 
-    email = verify_token(token, salt="email-verify", max_age=current_app.config["EMAIL_TOKEN_MAX_AGE"])
+    email = verify_token(token, salt="email-verify", max_age=current_app.config.get("EMAIL_TOKEN_MAX_AGE", 86400))
     if not email:
         return error("رابط التفعيل غير صحيح أو منتهي", status=400)
 
@@ -86,10 +92,10 @@ def login():
     if not user or not user.check_password(password):
         return error("البريد أو كلمة المرور غير صحيحة", status=401)
 
-    # السماح بدخول المستخدم
-    access_token = create_access_token(identity=user.id)
+    access_token = create_access_token(identity=str(user.id))
     return jsonify({
         "success": True,
+        "token": access_token,
         "access_token": access_token,
         "user": user.to_dict(),
     })
@@ -106,31 +112,41 @@ def forgot_password():
         return error("يرجى إدخال البريد الإلكتروني")
 
     user = User.query.filter_by(email=email).first()
-    
-    if user:
-        try:
-            send_reset_email(mail, user.email, user.full_name)
-        except Exception as exc:
-            current_app.logger.error(f"Could not send reset email: {exc}")
+    if not user:
+        return error("لم نجد حساباً مرتبطاً بهذا البريد الإلكتروني", status=404)
+
+    # توليد رمز توثيق OTP من 6 أرقام
+    code = str(random.randint(100000, 999999))
+    RESET_CODES[email] = code
+
+    try:
+        send_reset_email(mail, user.email, user.full_name, code)
+    except Exception as exc:
+        current_app.logger.error(f"Could not send reset email: {exc}")
+        return error("حدث خطأ أثناء إرسال البريد الإلكتروني", status=500)
 
     return jsonify({
         "success": True,
-        "message": "إذا كان الإيميل مسجل عندنا، بيوصلك رابط استعادة كلمة المرور",
+        "message": "تم إرسال رمز التوثيق إلى بريدك الإلكتروني بنجاح",
     })
 
 
 @auth_bp.route("/reset-password", methods=["POST"])
 def reset_password():
     data = request.get_json(silent=True) or {}
-    token = data.get("token", "")
-    new_password = data.get("password") or ""
+    email = (data.get("email") or "").strip().lower()
+    code = str(data.get("code") or "").strip()
+    new_password = data.get("password") or data.get("newPassword") or ""
+
+    if not email or not code or not new_password:
+        return error("جميع الحقول مطلوبة")
 
     if len(new_password) < 8:
         return error("كلمة المرور لازم تكون 8 أحرف أو أكثر")
 
-    email = verify_token(token, salt="password-reset", max_age=current_app.config["RESET_TOKEN_MAX_AGE"])
-    if not email:
-        return error("رابط الاستعادة غير صحيح أو منتهي", status=400)
+    saved_code = RESET_CODES.get(email)
+    if not saved_code or saved_code != code:
+        return error("رمز التوثيق غير صحيح أو انتهت صلاحيته", status=400)
 
     user = User.query.filter_by(email=email).first()
     if not user:
@@ -138,6 +154,10 @@ def reset_password():
 
     user.set_password(new_password)
     db.session.commit()
+
+    # مسح الرمز بعد التغيير بنجاح
+    RESET_CODES.pop(email, None)
+
     return jsonify({"success": True, "message": "تم تغيير كلمة المرور بنجاح"})
 
 
