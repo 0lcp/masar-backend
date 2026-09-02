@@ -4,7 +4,12 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 
 from models import db, User, GRADES
-from utils.email_utils import send_verification_email, send_reset_email, verify_token
+from utils.email_utils import (
+    send_verification_email,
+    send_reset_email,
+    send_register_otp_email,
+    verify_token,
+)
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -32,16 +37,14 @@ def send_register_otp():
     if User.query.filter_by(email=email).first():
         return error("هذا البريد مسجل من قبل", status=409)
 
-    # توليد رمز OTP لإنشاء الحساب
     code = str(random.randint(100000, 999999))
     REGISTER_CODES[email] = code
 
     try:
-        # استخدام دالة الإرسال المتوفرة
-        send_reset_email(mail, email, "مستخدم جديد", code)
+        send_register_otp_email(mail, email, "مستخدم جديد", code)
     except Exception as exc:
         current_app.logger.error(f"Could not send register OTP: {exc}")
-        return error("حدث خطأ أثناء إرسال رمز التوثيق", status=500)
+        return error("حدث خطأ أثناء إرسال رمز التوثيق، يرجى المحاولة لاحقاً", status=500)
 
     return jsonify({
         "success": True,
@@ -83,7 +86,6 @@ def register():
     db.session.add(user)
     db.session.commit()
 
-    # مسح الرمز من الذاكرة
     REGISTER_CODES.pop(email, None)
 
     access_token = create_access_token(identity=str(user.id))
