@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_mail import Mail
@@ -19,14 +19,20 @@ def create_app():
     JWTManager(app)
     mail.init_app(app)
 
-    # تهيئة CORS الشاملة لجميع المسارات والمصادر
-    CORS(
-        app,
-        resources={r"/*": {"origins": "*"}},
-        allow_headers=["Content-Type", "Authorization", "Accept"],
-        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        supports_credentials=True,
-    )
+    # تهيئة CORS المباشرة
+    CORS(app, resources={r"/*": {"origins": "*"}})
+
+    # إضافة ترويسات CORS لجميع الاستجابات لتوافق ومتطلبات iOS Safari
+    @app.after_request
+    def add_cors_headers(response):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = (
+            "Content-Type, Authorization, Accept"
+        )
+        response.headers["Access-Control-Allow-Methods"] = (
+            "GET, POST, PUT, DELETE, OPTIONS"
+        )
+        return response
 
     # ---- Blueprints ----
     from routes.admin import admin_bp
@@ -39,15 +45,11 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(subscription_bp)
 
-    # ---- Health check ----
-    @app.route("/api/health", methods=["GET"])
+    # ---- Health check & Root ----
+    @app.route("/", methods=["GET", "OPTIONS"])
+    @app.route("/api/health", methods=["GET", "OPTIONS"])
     def health():
         return jsonify({"status": "ok", "service": "masar-backend"})
-
-    # ---- Root Route ----
-    @app.route("/", methods=["GET"])
-    def index():
-        return jsonify({"message": "Masar Backend Server is Running"})
 
     # ---- Create tables on first run ----
     with app.app_context():
