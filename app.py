@@ -18,9 +18,9 @@ def create_app():
     bcrypt.init_app(app)
     JWTManager(app)
     mail.init_app(app)
-    # يقبل طلبات بس من المواقع المدرجة بـ ALLOWED_ORIGINS (شوف config.py) —
-    # مو من أي موقع بالعالم زي كان قبل.
-    CORS(app, resources={r"/api/*": {"origins": app.config["ALLOWED_ORIGINS"]}})
+
+    # السماح لجميع المصادر لمنع حظر الطلبات من متصفح التابلت
+    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
     # ---- Blueprints ----
     from routes.auth import auth_bp
