@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_mail import Mail
@@ -19,24 +19,14 @@ def create_app():
     JWTManager(app)
     mail.init_app(app)
 
-    # تهيئة CORS بشكل كامل للسماح بالطلبات من أي مصدر وجميع الترويسات
+    # تهيئة CORS الشاملة لجميع المسارات والمصادر
     CORS(
         app,
         resources={r"/*": {"origins": "*"}},
         allow_headers=["Content-Type", "Authorization", "Accept"],
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        supports_credentials=True,
     )
-
-    # معالجة طلبات OPTIONS لمتصفحات Safari و iOS لضمان استجابة 200 OK قبل الـ Fetch
-    @app.before_request
-    def handle_preflight():
-        if request.method == "OPTIONS":
-            response = app.make_default_options_response()
-            headers = response.headers
-            headers['Access-Control-Allow-Origin'] = '*'
-            headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-            headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, Accept'
-            return response
 
     # ---- Blueprints ----
     from routes.admin import admin_bp
@@ -53,6 +43,11 @@ def create_app():
     @app.route("/api/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok", "service": "masar-backend"})
+
+    # ---- Root Route ----
+    @app.route("/", methods=["GET"])
+    def index():
+        return jsonify({"message": "Masar Backend Server is Running"})
 
     # ---- Create tables on first run ----
     with app.app_context():
