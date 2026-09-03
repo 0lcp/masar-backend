@@ -1,8 +1,7 @@
 from datetime import datetime
-from flask_sqlalchemy import SQLAlchemy
+from extensions import db  # استيراد db من extensions لمنع التكرار وأخطاء التهيئة
 from flask_bcrypt import Bcrypt
 
-db = SQLAlchemy()
 bcrypt = Bcrypt()
 
 GRADES = [
@@ -28,6 +27,12 @@ class User(db.Model):
     is_verified = db.Column(db.Boolean, default=False, nullable=False)
     role = db.Column(db.String(20), default="student", nullable=False)  # 'student' or 'admin'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # ---- OTP Fields (إضافات الـ OTP وحماية التخمين) ----
+    otp_code = db.Column(db.String(6), nullable=True)
+    otp_purpose = db.Column(db.String(20), nullable=True)  # 'register' or 'reset'
+    otp_expires_at = db.Column(db.DateTime, nullable=True)
+    otp_attempts = db.Column(db.Integer, default=0)
 
     # ---- Password helpers ----
     def set_password(self, plain_password: str):
