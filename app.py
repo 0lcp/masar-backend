@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, make_response, request
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 
@@ -17,34 +17,12 @@ def create_app():
     JWTManager(app)
     mail.init_app(app)
 
-    # تهيئة CORS
-    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
-
-    # معالجة طلبات OPTIONS تلقائياً لمنع حظر المتصفح
-    @app.before_request
-    def handle_preflight():
-        if request.method == "OPTIONS":
-            response = make_response()
-            response.headers.add("Access-Control-Allow-Origin", "*")
-            response.headers.add(
-                "Access-Control-Allow-Headers", "Content-Type, Authorization, Accept"
-            )
-            response.headers.add(
-                "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"
-            )
-            return response, 200
-
-    # إضافة ترويسات CORS لجميع الاستجابات
-    @app.after_request
-    def add_cors_headers(response):
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Headers"] = (
-            "Content-Type, Authorization, Accept"
-        )
-        response.headers["Access-Control-Allow-Methods"] = (
-            "GET, POST, PUT, DELETE, OPTIONS"
-        )
-        return response
+    # تهيئة CORS — origins محددة من config.py (لازم credentials مع origin محدد، مو "*")
+    CORS(
+        app,
+        resources={r"/*": {"origins": Config.ALLOWED_ORIGINS}},
+        supports_credentials=True,
+    )
 
     # ---- Blueprints ----
     from routes.admin import admin_bp
