@@ -14,6 +14,12 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # 👇 جديد: يمنع استخدام اتصالات معطوبة/قديمة بقاعدة البيانات
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 280,
+    }
+
     # ---- JWT ----
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "change-this-too")
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=2)
