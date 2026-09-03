@@ -1,12 +1,10 @@
 from flask import Flask, jsonify, make_response, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
-from flask_mail import Mail
 
 from config import Config
-from models import bcrypt, db
-
-mail = Mail()
+from extensions import db, mail
+from models import bcrypt
 
 
 def create_app():
