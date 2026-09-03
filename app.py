@@ -20,7 +20,9 @@ def create_app():
     mail.init_app(app)
 
     # السماح لجميع المصادر لمنع حظر الطلبات من متصفح التابلت
+        # استبدل السطر القديم بهذا السطر كاملاً
     CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+
 
     # ---- Blueprints ----
     from routes.auth import auth_bp
