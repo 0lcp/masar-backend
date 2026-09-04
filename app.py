@@ -1,5 +1,5 @@
 import socket
-socket.setdefaulttimeout(10)
+socket.setdefaulttimeout(25)
 
 # --- إجبار الاتصالات على IPv4 بس (حل مشكلة Errno 101 على Render) ---
 _orig_getaddrinfo = socket.getaddrinfo
