@@ -1,6 +1,13 @@
 import socket
 socket.setdefaulttimeout(10)
 
+# --- إجبار الاتصالات على IPv4 بس (حل مشكلة Errno 101 على Render) ---
+_orig_getaddrinfo = socket.getaddrinfo
+def _getaddrinfo_ipv4(host, port, family=0, type=0, proto=0, flags=0):
+    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+socket.getaddrinfo = _getaddrinfo_ipv4
+# --------------------------------------------------------------
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
