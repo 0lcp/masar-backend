@@ -139,7 +139,7 @@ def send_otp_email(email, full_name, code, purpose="register"):
         </p>
     </div>
     """
-        response = requests.post(
+    response = requests.post(
         "https://api.resend.com/emails",
         headers={
             "Authorization": f"Bearer {current_app.config['RESEND_API_KEY']}",
