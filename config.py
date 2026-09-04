@@ -24,9 +24,9 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=2)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
-    # ---- Email (Resend API — HTTPS, يتجاوز حجب SMTP على Render) ----
-    RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-    RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "Masar <onboarding@resend.dev>")
+    # ---- Email (Brevo API — HTTPS, يشتغل مع أي مستلم بدون توثيق دومين) ----
+    BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+    BREVO_FROM_EMAIL = os.environ.get("BREVO_FROM_EMAIL", "")
 
     # ---- Frontend URL (used inside email links) ----
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5500")
