@@ -140,21 +140,21 @@ def send_otp_email(email, full_name, code, purpose="register"):
     </div>
     """
     response = requests.post(
-        "https://api.resend.com/emails",
+        "https://api.brevo.com/v3/smtp/email",
         headers={
-            "Authorization": f"Bearer {current_app.config['RESEND_API_KEY']}",
+            "api-key": current_app.config["BREVO_API_KEY"],
             "Content-Type": "application/json",
         },
         json={
-            "from": current_app.config["RESEND_FROM_EMAIL"],
-            "to": [email],
+            "sender": {"email": current_app.config["BREVO_FROM_EMAIL"], "name": "مسار"},
+            "to": [{"email": email}],
             "subject": subject,
-            "html": html,
+            "htmlContent": html,
         },
         timeout=15,
     )
     if response.status_code >= 400:
-        raise Exception(f"Resend API error {response.status_code}: {response.text}")
+        raise Exception(f"Brevo API error {response.status_code}: {response.text}")
 
 
 # =========================================================
