@@ -14,7 +14,6 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # 👇 جديد: يمنع استخدام اتصالات معطوبة/قديمة بقاعدة البيانات
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
         "pool_recycle": 280,
@@ -25,20 +24,14 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=2)
     JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
 
-    # ---- Email (Gmail SMTP — free, needs an "App Password") ----
-    MAIL_SERVER = "smtp.gmail.com"
-    MAIL_PORT = 587
-    MAIL_USE_TLS = True
-    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
-    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
-    MAIL_DEFAULT_SENDER = os.environ.get("MAIL_USERNAME", "")
+    # ---- Email (Resend API — HTTPS, يتجاوز حجب SMTP على Render) ----
+    RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+    RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "Masar <onboarding@resend.dev>")
 
     # ---- Frontend URL (used inside email links) ----
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5500")
 
     # ---- Allowed origins for CORS (comma-separated) ----
-    # لازم يحتوي رابط موقعك الفعلي (Netlify مثلاً) + أي روابط تجربة محلية.
-    # مثال بمتغير البيئة: ALLOWED_ORIGINS=https://masar-frontend.netlify.app,http://localhost:5500
     ALLOWED_ORIGINS = [
         origin.strip()
         for origin in os.environ.get(
