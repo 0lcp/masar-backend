@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from sqlalchemy import text, inspect
 
 from config import Config
 from extensions import db, mail
@@ -17,14 +18,12 @@ def create_app():
     JWTManager(app)
     mail.init_app(app)
 
-    # تهيئة CORS — origins محددة من config.py (لازم credentials مع origin محدد، مو "*")
     CORS(
         app,
         resources={r"/*": {"origins": Config.ALLOWED_ORIGINS}},
         supports_credentials=True,
     )
 
-    # ---- Blueprints ----
     from routes.admin import admin_bp
     from routes.auth import auth_bp
     from routes.content import content_bp
@@ -35,7 +34,6 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(subscription_bp)
 
-    # ---- Health check & Root ----
     @app.route("/", methods=["GET"])
     @app.route("/api/health", methods=["GET"])
     def health():
@@ -43,6 +41,26 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+
+        # ---- ترحيل آمن: يضيف أعمدة ناقصة لجدول users إذا مو موجودة ----
+        inspector = inspect(db.engine)
+        existing_columns = [col["name"] for col in inspector.get_columns("users")]
+
+        missing_columns = {
+            "otp_code": "VARCHAR(6)",
+            "otp_purpose": "VARCHAR(20)",
+            "otp_expires_at": "TIMESTAMP",
+            "otp_attempts": "INTEGER DEFAULT 0",
+        }
+
+        for col_name, col_type in missing_columns.items():
+            if col_name not in existing_columns:
+                try:
+                    db.session.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    print(f"Migration warning ({col_name}): {e}")
 
     return app
 
