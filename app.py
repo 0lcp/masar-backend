@@ -1,3 +1,6 @@
+import socket
+socket.setdefaulttimeout(10)
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
@@ -6,6 +9,8 @@ from sqlalchemy import text, inspect
 from config import Config
 from extensions import db, mail
 from models import bcrypt
+
+# ... باقي الكود يضل نفسه بدون تغيير
 
 
 def create_app():
