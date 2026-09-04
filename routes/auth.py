@@ -6,11 +6,13 @@ from flask_jwt_extended import (
     get_jwt_identity,
     jwt_required,
 )
-from flask_mail import Message
+import requests
+from flask import current_app
 
-# استيراد db و mail من ملف extensions للحد من التداخل والدائريات
-from extensions import db, mail
+# استيراد db من ملف extensions للحد من التداخل والدائريات
+from extensions import db
 from models import User, GRADES
+
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -137,12 +139,23 @@ def send_otp_email(email, full_name, code, purpose="register"):
         </p>
     </div>
     """
-    msg = Message(
-        subject=subject,
-        recipients=[email],
-        html=html,
+        response = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {current_app.config['RESEND_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": current_app.config["RESEND_FROM_EMAIL"],
+            "to": [email],
+            "subject": subject,
+            "html": html,
+        },
+        timeout=15,
     )
-    mail.send(msg)
+    if response.status_code >= 400:
+        raise Exception(f"Resend API error {response.status_code}: {response.text}")
+
 
 # =========================================================
 # REGISTER
