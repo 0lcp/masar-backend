@@ -2,7 +2,11 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 
-from models import db, User, Subject, Lesson, Progress, user_has_active_subscription, Quiz, Choice, QuizAttempt
+from models import (
+    db, User, Grade, Subject, SubSection, Lesson, Progress,
+    LibraryFile, WazariFile, user_has_access,
+    Quiz, Choice, QuizAttempt,
+)
 
 content_bp = Blueprint("content", __name__, url_prefix="/api/content")
 
@@ -12,72 +16,98 @@ def error(message, status=400):
 
 
 def _current_user_optional():
-    """يرجع (user, has_subscription) لو فيه توكن صالح، وإلا (None, False)."""
+    """يرجع user لو فيه توكن صالح، وإلا None."""
     try:
         verify_jwt_in_request(optional=True)
         user_id = get_jwt_identity()
         if user_id:
-            user = User.query.get(user_id)
-            if user:
-                return user, user_has_active_subscription(user_id)
+            return User.query.get(user_id)
     except Exception:
         pass
-    return None, False
+    return None
 
+
+# ============ GRADES ============
+
+@content_bp.route("/grades", methods=["GET"])
+def list_grades():
+    grades = Grade.query.order_by(Grade.order).all()
+    return jsonify({"success": True, "grades": [g.to_dict() for g in grades]})
+
+
+# ============ SUBJECTS ============
 
 @content_bp.route("/subjects", methods=["GET"])
 def list_subjects():
     """
-    Returns subjects for a grade.
-    Grade comes from ?grade=... query param, or falls back to the logged-in
-    user's grade if a valid token is sent (optional auth).
-    Paid subjects are marked "unlocked": true/false depending on whether
-    the requesting user has an active subscription.
+    يرجع مواد صف معيّن. الصف يجي من ?grade_id=...، أو من صف
+    المستخدم المسجّل دخوله لو ما انبعث grade_id (auth اختياري).
     """
-    grade = request.args.get("grade")
-    user, has_sub = _current_user_optional()
+    grade_id = request.args.get("grade_id", type=int)
+    user = _current_user_optional()
 
-    if not grade and user:
-        grade = user.grade
+    if not grade_id and user:
+        grade_id = user.grade_id
 
-    query = Subject.query
-    if grade:
-        query = query.filter_by(grade=grade)
+    if not grade_id:
+        return error("لازم تحدد الصف (grade_id)", status=400)
 
-    subjects = query.order_by(Subject.order).all()
+    subjects = Subject.query.filter_by(grade_id=grade_id).order_by(Subject.order).all()
     return jsonify({
         "success": True,
-        "subjects": [s.to_dict(unlocked=has_sub) for s in subjects],
+        "subjects": [s.to_dict() for s in subjects],
     })
 
 
 @content_bp.route("/subjects/<int:subject_id>", methods=["GET"])
 def get_subject(subject_id):
+    """يرجع المادة مع أقسامها الفرعية، كل قسم فرعي فيه unlocked حسب وصول المستخدم."""
     subject = Subject.query.get(subject_id)
     if not subject:
         return error("المادة غير موجودة", status=404)
 
-    user, has_sub = _current_user_optional()
+    user = _current_user_optional()
+    user_id = user.id if user else None
 
-    if subject.is_paid and not has_sub:
+    return jsonify({
+        "success": True,
+        "subject": subject.to_dict(include_subsections=True, user_id=user_id),
+    })
+
+
+# ============ SUBSECTIONS ============
+
+@content_bp.route("/subsections/<int:subsection_id>", methods=["GET"])
+def get_subsection(subsection_id):
+    """يرجع القسم الفرعي مع دروسه لو كان مفتوح (مجاني أو عند المستخدم وصول فعّال)."""
+    subsection = SubSection.query.get(subsection_id)
+    if not subsection:
+        return error("القسم غير موجود", status=404)
+
+    user = _current_user_optional()
+    user_id = user.id if user else None
+
+    data = subsection.to_dict(include_lessons=True, user_id=user_id)
+
+    if not data["unlocked"]:
         return jsonify({
             "success": True,
-            "subject": subject.to_dict(include_lessons=False, unlocked=False),
+            "subsection": data,
             "locked": True,
-            "message": "هذي مادة مدفوعة — فعّل اشتراكك لتقدر توصل للدروس",
+            "message": "هذا القسم مدفوع — فعّل اشتراكك لتقدر توصل لدروسه",
         })
-
-    subject_dict = subject.to_dict(include_lessons=True, unlocked=True)
 
     if user:
         completed_ids = {
             p.lesson_id for p in Progress.query.filter_by(user_id=user.id, completed=True).all()
         }
-        for lesson_dict in subject_dict["lessons"]:
+        for lesson_dict in data["lessons"]:
             lesson_dict["completed"] = lesson_dict["id"] in completed_ids
 
-    return jsonify({"success": True, "subject": subject_dict})
+    return jsonify({"success": True, "subsection": data})
 
+
+# ============ LESSONS ============
 
 @content_bp.route("/lessons/<int:lesson_id>", methods=["GET"])
 def get_lesson(lesson_id):
@@ -85,10 +115,11 @@ def get_lesson(lesson_id):
     if not lesson:
         return error("الدرس غير موجود", status=404)
 
-    if lesson.subject.is_paid:
-        _, has_sub = _current_user_optional()
-        if not has_sub:
-            return error("هذا الدرس بمادة مدفوعة — فعّل اشتراكك أول", status=402)
+    subsection = lesson.subsection
+    if subsection.is_paid:
+        user = _current_user_optional()
+        if not user or not user_has_access(user.id, "subsection", subsection.id):
+            return error("هذا الدرس بقسم مدفوع — فعّل اشتراكك أول", status=402)
 
     return jsonify({"success": True, "lesson": lesson.to_dict()})
 
@@ -101,8 +132,9 @@ def complete_lesson(lesson_id):
     if not lesson:
         return error("الدرس غير موجود", status=404)
 
-    if lesson.subject.is_paid and not user_has_active_subscription(user_id):
-        return error("هذا الدرس بمادة مدفوعة — فعّل اشتراكك أول", status=402)
+    subsection = lesson.subsection
+    if subsection.is_paid and not user_has_access(user_id, "subsection", subsection.id):
+        return error("هذا الدرس بقسم مدفوع — فعّل اشتراكك أول", status=402)
 
     progress = Progress.query.filter_by(user_id=user_id, lesson_id=lesson_id).first()
     if not progress:
@@ -116,48 +148,73 @@ def complete_lesson(lesson_id):
     return jsonify({"success": True, "message": "تسجّل الدرس كمكتمل", "progress": progress.to_dict()})
 
 
+# ============ PROGRESS SUMMARY ============
+
 @content_bp.route("/progress", methods=["GET"])
 @jwt_required()
 def my_progress():
     """
-    Returns overall progress summary for the logged-in student:
-    completion % per subject, plus total lessons done.
-    Locked (paid, not subscribed) subjects are included but marked locked,
-    with lessons_total hidden as 0 done / not counted toward the overall %.
+    ملخص تقدم الطالب: نسبة الإنجاز لكل قسم فرعي ضمن كل مادة بصفه،
+    بالإضافة لإجمالي الدروس المكتملة عبر كل الأقسام المفتوحة.
     """
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
     if not user:
         return error("المستخدم غير موجود", status=404)
 
-    has_sub = user_has_active_subscription(user_id)
-    subjects = Subject.query.filter_by(grade=user.grade).order_by(Subject.order).all()
+    if not user.grade_id:
+        return jsonify({
+            "success": True,
+            "overall_percent": 0,
+            "lessons_done": 0,
+            "lessons_total": 0,
+            "subjects": [],
+        })
+
+    subjects = Subject.query.filter_by(grade_id=user.grade_id).order_by(Subject.order).all()
     completed_ids = {
         p.lesson_id for p in Progress.query.filter_by(user_id=user_id, completed=True).all()
     }
 
-    summary = []
+    subjects_summary = []
     total_lessons = 0
     total_done = 0
+
     for subject in subjects:
-        locked = subject.is_paid and not has_sub
-        lesson_ids = [l.id for l in subject.lessons]
-        done = len([lid for lid in lesson_ids if lid in completed_ids])
+        subsections_summary = []
+        subj_lessons_total = 0
+        subj_lessons_done = 0
 
-        if not locked:
-            total_lessons += len(lesson_ids)
-            total_done += done
+        for sub in subject.subsections:
+            locked = sub.is_paid and not user_has_access(user_id, "subsection", sub.id)
+            lesson_ids = [l.id for l in sub.lessons]
+            done = len([lid for lid in lesson_ids if lid in completed_ids])
 
-        pct = round((done / len(lesson_ids)) * 100) if lesson_ids and not locked else 0
-        summary.append({
+            if not locked:
+                total_lessons += len(lesson_ids)
+                total_done += done
+                subj_lessons_total += len(lesson_ids)
+                subj_lessons_done += done
+
+            pct = round((done / len(lesson_ids)) * 100) if lesson_ids and not locked else 0
+            subsections_summary.append({
+                "subsection_id": sub.id,
+                "subsection_name": sub.name,
+                "is_paid": sub.is_paid,
+                "locked": locked,
+                "lessons_done": done if not locked else 0,
+                "lessons_total": len(lesson_ids),
+                "percent": pct,
+            })
+
+        subjects_summary.append({
             "subject_id": subject.id,
             "subject_name": subject.name,
             "icon": subject.icon,
-            "is_paid": subject.is_paid,
-            "locked": locked,
-            "lessons_done": done if not locked else 0,
-            "lessons_total": len(lesson_ids) if not locked else len(lesson_ids),
-            "percent": pct,
+            "lessons_done": subj_lessons_done,
+            "lessons_total": subj_lessons_total,
+            "percent": round((subj_lessons_done / subj_lessons_total) * 100) if subj_lessons_total else 0,
+            "subsections": subsections_summary,
         })
 
     overall_pct = round((total_done / total_lessons) * 100) if total_lessons else 0
@@ -167,7 +224,7 @@ def my_progress():
         "overall_percent": overall_pct,
         "lessons_done": total_done,
         "lessons_total": total_lessons,
-        "subjects": summary,
+        "subjects": subjects_summary,
     })
 
 
@@ -180,10 +237,11 @@ def get_lesson_quiz(lesson_id):
     if not lesson:
         return error("الدرس غير موجود", status=404)
 
-    if lesson.subject.is_paid:
-        _, has_sub = _current_user_optional()
-        if not has_sub:
-            return error("هذا الاختبار بمادة مدفوعة — فعّل اشتراكك أول", status=402)
+    subsection = lesson.subsection
+    if subsection.is_paid:
+        user = _current_user_optional()
+        if not user or not user_has_access(user.id, "subsection", subsection.id):
+            return error("هذا الاختبار بقسم مدفوع — فعّل اشتراكك أول", status=402)
 
     quiz = Quiz.query.filter_by(lesson_id=lesson_id).first()
     if not quiz:
@@ -204,8 +262,9 @@ def submit_quiz(quiz_id):
     if not quiz:
         return error("الاختبار غير موجود", status=404)
 
-    if quiz.lesson.subject.is_paid and not user_has_active_subscription(user_id):
-        return error("هذا الاختبار بمادة مدفوعة — فعّل اشتراكك أول", status=402)
+    subsection = quiz.lesson.subsection
+    if subsection.is_paid and not user_has_access(user_id, "subsection", subsection.id):
+        return error("هذا الاختبار بقسم مدفوع — فعّل اشتراكك أول", status=402)
 
     data = request.get_json(silent=True) or {}
     answers = data.get("answers") or []
@@ -236,3 +295,78 @@ def submit_quiz(quiz_id):
         "attempt": attempt.to_dict(),
         "breakdown": breakdown,
     })
+
+
+# ============ LIBRARY (الملازم والكتب) ============
+
+@content_bp.route("/library", methods=["GET"])
+def list_library_files():
+    """
+    يرجع ملفات المكتبة مفلترة حسب ?grade_id=...&subject_id=... (subject_id اختياري).
+    كل ملف يرجع unlocked حسب وصول المستخدم إذا كان مدفوع.
+    """
+    grade_id = request.args.get("grade_id", type=int)
+    subject_id = request.args.get("subject_id", type=int)
+
+    if not grade_id:
+        return error("لازم تحدد الصف (grade_id)", status=400)
+
+    query = LibraryFile.query.filter_by(grade_id=grade_id)
+    if subject_id:
+        query = query.filter_by(subject_id=subject_id)
+
+    files = query.order_by(LibraryFile.uploaded_at.desc()).all()
+
+    user = _current_user_optional()
+    user_id = user.id if user else None
+
+    return jsonify({
+        "success": True,
+        "files": [f.to_dict(user_id=user_id) for f in files],
+    })
+
+
+@content_bp.route("/library/<int:file_id>", methods=["GET"])
+def get_library_file(file_id):
+    file = LibraryFile.query.get(file_id)
+    if not file:
+        return error("الملف غير موجود", status=404)
+
+    user = _current_user_optional()
+    user_id = user.id if user else None
+    data = file.to_dict(user_id=user_id)
+
+    if not data["unlocked"]:
+        return jsonify({
+            "success": True,
+            "file": data,
+            "locked": True,
+            "message": "هذا الملف مدفوع — فعّل اشتراكك لتقدر تفتحه",
+        })
+
+    return jsonify({"success": True, "file": data})
+
+
+# ============ WAZARIYAT (الوزاريات) ============
+
+@content_bp.route("/wazari", methods=["GET"])
+def list_wazari_files():
+    """
+    يرجع أسئلة وزارية مفلترة حسب ?grade_id=...&subject_id=...&year=... (الأخيرين اختياريين).
+    مجانية بالكامل حالياً.
+    """
+    grade_id = request.args.get("grade_id", type=int)
+    subject_id = request.args.get("subject_id", type=int)
+    year = request.args.get("year", type=int)
+
+    if not grade_id:
+        return error("لازم تحدد الصف (grade_id)", status=400)
+
+    query = WazariFile.query.filter_by(grade_id=grade_id)
+    if subject_id:
+        query = query.filter_by(subject_id=subject_id)
+    if year:
+        query = query.filter_by(year=year)
+
+    files = query.order_by(WazariFile.year.desc()).all()
+    return jsonify({"success": True, "files": [f.to_dict() for f in files]})
