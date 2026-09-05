@@ -20,6 +20,21 @@ def make_admin(email: str):
             print(f"❌ ماكو حساب بهذا الإيميل: {email}")
             return
 
+        if user.role == "admin":
+            print(f"ℹ️ {user.email} أدمن أصلاً.")
+            return
+
+        if not user.is_verified:
+            confirm = input(f"⚠️ الحساب {email} ما مفعّل بعد (غير verified). تريد تكمل؟ (y/n): ")
+            if confirm.lower() != 'y':
+                print("إلغيت العملية.")
+                return
+
+        confirm = input(f"متأكد تريد تخلي {user.full_name} ({user.email}) أدمن؟ (y/n): ")
+        if confirm.lower() != 'y':
+            print("إلغيت العملية.")
+            return
+
         user.role = "admin"
         db.session.commit()
         print(f"✅ صار {user.full_name} ({user.email}) أدمن الحين.")
