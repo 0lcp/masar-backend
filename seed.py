@@ -1,76 +1,117 @@
 """
-سكريبت لتعبئة قاعدة البيانات بمواد ودروس تجريبية.
-شغّله مرة وحدة بعد إعداد المشروع:
+سكريبت لتعبئة قاعدة البيانات بصفوف ومواد وأقسام فرعية ودروس تجريبية.
+شغّله مرة وحدة بعد تصفير قاعدة البيانات:
 
     python seed.py
 """
 
 from app import create_app
-from models import db, Subject, Lesson, SubscriptionPlan
+from models import db, Grade, Subject, SubSection, Lesson
 
 app = create_app()
 
+# كل صف فيه قائمة مواد، كل مادة فيها قائمة أقسام فرعية،
+# كل قسم فرعي إله is_paid/price/duration_days خاص فيه لحاله.
 SAMPLE_DATA = {
     "السادس إعدادي": [
         {
-            "name": "الرياضيات", "icon": "📐", "is_paid": False,
-            "lessons": [
-                ("المعادلات التربيعية", "حل المعادلة بطريقة القانون العام", 18),
-                ("الدوال التربيعية", "رسم وتحليل الدالة التربيعية", 22),
-                ("المتباينات", "حل المتباينات من الدرجة الثانية", 15),
+            "name": "الرياضيات", "icon": "📐",
+            "subsections": [
+                {
+                    "name": "شرح المنهج", "icon": "📂", "is_paid": False,
+                    "lessons": [
+                        ("المعادلات التربيعية", "حل المعادلة بطريقة القانون العام", 18),
+                        ("الدوال التربيعية", "رسم وتحليل الدالة التربيعية", 22),
+                        ("المتباينات", "حل المتباينات من الدرجة الثانية", 15),
+                    ],
+                },
             ],
         },
         {
-            "name": "الكيمياء", "icon": "🧪", "is_paid": False,
-            "lessons": [
-                ("التفاعلات الكيميائية", "أنواع التفاعلات وموازنة المعادلات", 20),
-                ("التفاعلات المزدوجة", "تفاعلات الإحلال المزدوج", 17),
-                ("الحسابات الكيميائية", "المول والكتلة المولية", 25),
+            "name": "الكيمياء", "icon": "🧪",
+            "subsections": [
+                {
+                    "name": "شرح المنهج", "icon": "📂", "is_paid": False,
+                    "lessons": [
+                        ("التفاعلات الكيميائية", "أنواع التفاعلات وموازنة المعادلات", 20),
+                        ("التفاعلات المزدوجة", "تفاعلات الإحلال المزدوج", 17),
+                        ("الحسابات الكيميائية", "المول والكتلة المولية", 25),
+                    ],
+                },
             ],
         },
         {
-            "name": "اللغة العربية", "icon": "📖", "is_paid": False,
-            "lessons": [
-                ("النحو — الإعراب", "إعراب الجمل الاسمية والفعلية", 14),
-                ("البلاغة", "التشبيه والاستعارة والكناية", 16),
-                ("مراجعة نهائية", "مراجعة شاملة لكل الوحدات", 30),
+            "name": "اللغة العربية", "icon": "📖",
+            "subsections": [
+                {
+                    "name": "شرح المنهج", "icon": "📂", "is_paid": False,
+                    "lessons": [
+                        ("النحو — الإعراب", "إعراب الجمل الاسمية والفعلية", 14),
+                        ("البلاغة", "التشبيه والاستعارة والكناية", 16),
+                        ("مراجعة نهائية", "مراجعة شاملة لكل الوحدات", 30),
+                    ],
+                },
             ],
         },
         {
-            # مثال على مادة مدفوعة — غيّرها أو أضيف غيرها من لوحة الأدمن أي وقت
-            "name": "الفيزياء المكثف", "icon": "⚛️", "is_paid": True,
-            "lessons": [
-                ("قوانين نيوتن", "القانون الأول والثاني والثالث للحركة", 19),
-                ("الطاقة والشغل", "مبدأ حفظ الطاقة", 21),
+            # مثال على مادة فيها قسمين فرعيين مختلفين — وحد مجاني ووحد مدفوع،
+            # كل وحد بسعر وتفعيل مستقل عن الثاني تماماً
+            "name": "الفيزياء", "icon": "⚛️",
+            "subsections": [
+                {
+                    "name": "قسم المراجعة العامة", "icon": "📂", "is_paid": False,
+                    "lessons": [
+                        ("مقدمة بالحركة", "مفاهيم أساسية بالحركة والسرعة", 12),
+                    ],
+                },
+                {
+                    "name": "قسم الأستاذ محمد جاسم", "icon": "👨‍🏫", "is_paid": True,
+                    "price": 15000, "duration_days": 30,
+                    "lessons": [
+                        ("قوانين نيوتن", "القانون الأول والثاني والثالث للحركة", 19),
+                        ("الطاقة والشغل", "مبدأ حفظ الطاقة", 21),
+                    ],
+                },
             ],
         },
     ],
 }
 
-SAMPLE_PLANS = [
-    {"name": "اشتراك شهري", "duration_days": 30, "price": 15000},
-    {"name": "اشتراك فصل دراسي", "duration_days": 120, "price": 45000},
-    {"name": "اشتراك سنوي", "duration_days": 365, "price": 120000},
-]
-
 
 def seed():
     with app.app_context():
-        if Subject.query.first():
-            print("⚠️  فيه بيانات موجودة أصلاً — احذف قاعدة البيانات (masar.db) إذا تريد تبدأ من جديد.")
-        else:
-            for grade, subjects in SAMPLE_DATA.items():
-                for s_order, s in enumerate(subjects):
-                    subject = Subject(
-                        name=s["name"], grade=grade, icon=s["icon"],
-                        is_paid=s.get("is_paid", False), order=s_order,
-                    )
-                    db.session.add(subject)
-                    db.session.flush()  # يحصل subject.id قبل الحفظ النهائي
+        if Grade.query.first():
+            print("⚠️  فيه بيانات موجودة أصلاً — صفّر قاعدة البيانات إذا تريد تبدأ من جديد.")
+            return
 
-                    for l_order, (title, desc, minutes) in enumerate(s["lessons"]):
+        for g_order, (grade_name, subjects) in enumerate(SAMPLE_DATA.items()):
+            grade = Grade(name=grade_name, order=g_order)
+            db.session.add(grade)
+            db.session.flush()  # يحصل grade.id قبل الحفظ النهائي
+
+            for s_order, s in enumerate(subjects):
+                subject = Subject(
+                    grade_id=grade.id, name=s["name"], icon=s["icon"], order=s_order,
+                )
+                db.session.add(subject)
+                db.session.flush()
+
+                for sub_order, sub in enumerate(s["subsections"]):
+                    subsection = SubSection(
+                        subject_id=subject.id,
+                        name=sub["name"],
+                        icon=sub.get("icon", "📂"),
+                        is_paid=sub.get("is_paid", False),
+                        price=sub.get("price"),
+                        duration_days=sub.get("duration_days"),
+                        order=sub_order,
+                    )
+                    db.session.add(subsection)
+                    db.session.flush()
+
+                    for l_order, (title, desc, minutes) in enumerate(sub["lessons"]):
                         lesson = Lesson(
-                            subject_id=subject.id,
+                            subsection_id=subsection.id,
                             title=title,
                             description=desc,
                             duration_minutes=minutes,
@@ -79,16 +120,8 @@ def seed():
                         )
                         db.session.add(lesson)
 
-            db.session.commit()
-            print("✅ تم إدخال المواد والدروس التجريبية بنجاح")
-
-        if SubscriptionPlan.query.first():
-            print("⚠️  فيه خطط اشتراك موجودة أصلاً — تجاوزناها.")
-        else:
-            for p in SAMPLE_PLANS:
-                db.session.add(SubscriptionPlan(**p))
-            db.session.commit()
-            print("✅ تم إدخال خطط الاشتراك التجريبية (تكدرين تغيّرين أسعارها من لوحة الأدمن)")
+        db.session.commit()
+        print("✅ تم إدخال الصفوف والمواد والأقسام الفرعية والدروس التجريبية بنجاح")
 
 
 if __name__ == "__main__":
