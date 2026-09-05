@@ -31,7 +31,7 @@ def generate_otp():
 
 def set_user_otp(user, code, purpose):
     """
-    تخزين رمز OTP في قاعدة البيانات بدلا من الذاكرة المؤقتة لضمان استقراره على Render.
+    تخزين رمز OTP في قاعدة البيانات بدلاً من الذاكرة المؤقتة لضمان استقراره على Render.
     """
     user.otp_code = str(code)
     user.otp_purpose = purpose
