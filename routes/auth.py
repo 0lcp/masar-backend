@@ -11,7 +11,7 @@ from flask import current_app
 
 # استيراد db من ملف extensions للحد من التداخل والدائريات
 from extensions import db
-from models import User, GRADES
+from models import User, Grade
 
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
@@ -31,7 +31,7 @@ def generate_otp():
 
 def set_user_otp(user, code, purpose):
     """
-    تخزين رمز OTP في قاعدة البيانات بدلاً من الذاكرة المؤقتة لضمان استقراره على Render.
+    تخزين رمز OTP في قاعدة البيانات بدلا من الذاكرة المؤقتة لضمان استقراره على Render.
     """
     user.otp_code = str(code)
     user.otp_purpose = purpose
@@ -167,7 +167,7 @@ def register():
         full_name = data.get("full_name", "").strip()
         email = normalize_email(data.get("email"))
         password = data.get("password", "")
-        grade = data.get("grade", "").strip()
+        grade_id = data.get("grade_id")
 
         # -------------------------
         # Validation
@@ -190,7 +190,8 @@ def register():
                 "error": "كلمة المرور يجب أن تكون 8 أحرف أو أكثر"
             }), 400
 
-        if grade not in GRADES:
+        grade = Grade.query.get(grade_id) if grade_id else None
+        if not grade:
             return jsonify({
                 "success": False,
                 "error": "الصف الدراسي غير صحيح"
@@ -235,7 +236,7 @@ def register():
         user = User(
             full_name=full_name,
             email=email,
-            grade=grade,
+            grade_id=grade.id,
             is_verified=False,
             role="student",
         )
