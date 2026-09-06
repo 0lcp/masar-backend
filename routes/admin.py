@@ -238,6 +238,26 @@ def delete_subsection(subsection_id):
 
 # ============ LESSONS ============
 
+@admin_bp.route("/subsections/<int:subsection_id>/lessons", methods=["GET"])
+@admin_required
+def list_subsection_lessons(subsection_id):
+    """
+    يرجع كل دروس قسم فرعي معيّن للأدمن، بدون أي فحص unlocked —
+    الأدمن لازم يشوف كل الدروس دايماً حتى لو القسم مدفوع وهو نفسه
+    ما عنده UserAccess مسجّل عليه.
+    """
+    subsection = SubSection.query.get(subsection_id)
+    if not subsection:
+        return error("القسم الفرعي غير موجود", status=404)
+
+    lessons = sorted(subsection.lessons, key=lambda l: l.order)
+    return jsonify({
+        "success": True,
+        "subsection": subsection.to_dict(),
+        "lessons": [l.to_dict() for l in lessons],
+    })
+
+
 @admin_bp.route("/lessons", methods=["POST"])
 @admin_required
 def create_lesson():
