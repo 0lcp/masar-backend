@@ -44,3 +44,8 @@ class Config:
     # ---- Token expiry ----
     EMAIL_TOKEN_MAX_AGE = 60 * 60 * 24        # 24 hours to verify email
     RESET_TOKEN_MAX_AGE = 60 * 60             # 1 hour to reset password
+
+    # ---- GitHub Files Repo (رفع ملفات الملازم والوزاريات) ----
+    GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+    GITHUB_FILES_REPO = os.environ.get("GITHUB_FILES_REPO", "")
+    GITHUB_FILES_BRANCH = os.environ.get("GITHUB_FILES_BRANCH", "main")
