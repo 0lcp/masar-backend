@@ -250,6 +250,73 @@ def get_lesson_quiz(lesson_id):
     return jsonify({"success": True, "quiz": quiz.to_dict(include_answers=False)})
 
 
+@content_bp.route("/quizzes", methods=["GET"])
+def list_quizzes():
+    """
+    يرجع كل الاختبارات المتاحة لصف معيّن (مع فلتر مادة اختياري)،
+    كل اختبار مع اسم مادته وقسمه الفرعي ودرسه، وهل هو مقفول، وآخر
+    نتيجة للمستخدم الحالي إذا كان مسجل دخول وسبق وحاول فيه.
+    """
+    grade_id = request.args.get("grade_id", type=int)
+    subject_id = request.args.get("subject_id", type=int)
+
+    if not grade_id:
+        return error("لازم تحدد الصف (grade_id)", status=400)
+
+    query = (
+        Quiz.query
+        .join(Lesson, Quiz.lesson_id == Lesson.id)
+        .join(SubSection, Lesson.subsection_id == SubSection.id)
+        .join(Subject, SubSection.subject_id == Subject.id)
+        .filter(Subject.grade_id == grade_id)
+    )
+    if subject_id:
+        query = query.filter(Subject.id == subject_id)
+
+    quizzes = query.order_by(Subject.order, SubSection.order, Lesson.order).all()
+
+    user = _current_user_optional()
+    user_id = user.id if user else None
+
+    results = []
+    for quiz in quizzes:
+        lesson = quiz.lesson
+        subsection = lesson.subsection
+        subject = subsection.subject
+
+        locked = subsection.is_paid and not (
+            user_id and user_has_access(user_id, "subsection", subsection.id)
+        )
+
+        best_attempt = None
+        if user_id:
+            attempt = (
+                QuizAttempt.query
+                .filter_by(user_id=user_id, quiz_id=quiz.id)
+                .order_by(QuizAttempt.taken_at.desc())
+                .first()
+            )
+            if attempt:
+                best_attempt = attempt.to_dict()
+
+        results.append({
+            "quiz_id": quiz.id,
+            "title": quiz.title,
+            "question_count": len(quiz.questions),
+            "lesson_id": lesson.id,
+            "lesson_title": lesson.title,
+            "subsection_id": subsection.id,
+            "subsection_name": subsection.name,
+            "subject_id": subject.id,
+            "subject_name": subject.name,
+            "subject_icon": subject.icon,
+            "locked": locked,
+            "last_attempt": best_attempt,
+        })
+
+    return jsonify({"success": True, "quizzes": results})
+
+
 @content_bp.route("/quizzes/<int:quiz_id>/submit", methods=["POST"])
 @jwt_required()
 def submit_quiz(quiz_id):
