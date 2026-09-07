@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 
@@ -225,6 +225,136 @@ def my_progress():
         "lessons_done": total_done,
         "lessons_total": total_lessons,
         "subjects": subjects_summary,
+    })
+
+
+# ============ HOME EXTRAS (سلسلة المذاكرة + التوصيات) ============
+
+def _calculate_streak(user_id):
+    """
+    يحسب عدد الأيام المتتالية اللي فيها نشاط (درس مكتمل أو محاولة اختبار)،
+    وصولاً لليوم الحالي أو أمس (لو اليوم لسه ما فيه نشاط).
+    """
+    dates = set()
+    for p in Progress.query.filter_by(user_id=user_id, completed=True).all():
+        if p.completed_at:
+            dates.add(p.completed_at.date())
+    for a in QuizAttempt.query.filter_by(user_id=user_id).all():
+        if a.taken_at:
+            dates.add(a.taken_at.date())
+
+    if not dates:
+        return 0
+
+    today = datetime.utcnow().date()
+    cursor = today if today in dates else today - timedelta(days=1)
+
+    streak = 0
+    while cursor in dates:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
+
+
+def _build_recommendations(user_id, user):
+    """
+    يبني حتى 3 توصيات: مراجعة درس ضعيف بآخر اختبار، الدرس الجاي بمسارك،
+    واختبار قصير ما جربه بعد. كلها من محتوى مفتوح فعلياً عند المستخدم.
+    """
+    recs = []
+    if not user.grade_id:
+        return recs
+
+    subjects = Subject.query.filter_by(grade_id=user.grade_id).order_by(Subject.order).all()
+
+    def is_unlocked(sub):
+        return not sub.is_paid or user_has_access(user_id, "subsection", sub.id)
+
+    # 1) أضعف محاولة اختبار حديثة (لو أقل من 70%)
+    recent_attempts = (
+        QuizAttempt.query.filter_by(user_id=user_id)
+        .order_by(QuizAttempt.taken_at.desc())
+        .limit(10)
+        .all()
+    )
+    if recent_attempts:
+        weakest = min(recent_attempts, key=lambda a: (a.score / a.total) if a.total else 1)
+        if weakest.total and (weakest.score / weakest.total) < 0.7:
+            lesson = weakest.quiz.lesson
+            wrong = weakest.total - weakest.score
+            recs.append({
+                "type": "review",
+                "title": f'راجع درس "{lesson.title}"',
+                "subtitle": f"أخطأت بيه {wrong} من {weakest.total} أسئلة بآخر اختبار",
+                "lesson_id": lesson.id,
+            })
+
+    # 2) أول درس غير مكتمل بمسار المستخدم (ضمن أقسام مفتوحة)
+    completed_ids = {
+        p.lesson_id for p in Progress.query.filter_by(user_id=user_id, completed=True).all()
+    }
+    next_lesson = None
+    for subject in subjects:
+        for sub in subject.subsections:
+            if not is_unlocked(sub):
+                continue
+            for lesson in sub.lessons:
+                if lesson.id not in completed_ids:
+                    next_lesson = lesson
+                    break
+            if next_lesson:
+                break
+        if next_lesson:
+            break
+    if next_lesson:
+        recs.append({
+            "type": "next_lesson",
+            "title": f'شاهد درس "{next_lesson.title}"',
+            "subtitle": "الدرس الجاي بمسارك",
+            "lesson_id": next_lesson.id,
+        })
+
+    # 3) اختبار قصير ما جربه المستخدم بعد (ضمن أقسام مفتوحة)
+    attempted_quiz_ids = {a.quiz_id for a in QuizAttempt.query.filter_by(user_id=user_id).all()}
+    quiz_suggestion = None
+    for subject in subjects:
+        for sub in subject.subsections:
+            if not is_unlocked(sub):
+                continue
+            for lesson in sub.lessons:
+                quiz = Quiz.query.filter_by(lesson_id=lesson.id).first()
+                if quiz and quiz.id not in attempted_quiz_ids:
+                    quiz_suggestion = quiz
+                    break
+            if quiz_suggestion:
+                break
+        if quiz_suggestion:
+            break
+    if quiz_suggestion:
+        recs.append({
+            "type": "quiz",
+            "title": f"اختبار قصير — {quiz_suggestion.title}",
+            "subtitle": f"{len(quiz_suggestion.questions)} أسئلة",
+            "lesson_id": quiz_suggestion.lesson_id,
+            "quiz_id": quiz_suggestion.id,
+        })
+
+    return recs[:3]
+
+
+@content_bp.route("/home-extras", methods=["GET"])
+@jwt_required()
+def home_extras():
+    """يرجع سلسلة المذاكرة الحقيقية والتوصيات المبنية على نشاط المستخدم الفعلي."""
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if not user:
+        return error("المستخدم غير موجود", status=404)
+
+    return jsonify({
+        "success": True,
+        "streak_days": _calculate_streak(user_id),
+        "recommendations": _build_recommendations(user_id, user),
     })
 
 
