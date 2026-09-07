@@ -468,6 +468,58 @@ def me():
         }), 500
 
 # =========================================================
+# UPDATE PROFILE (الاسم / الصف)
+# =========================================================
+@auth_bp.route("/me", methods=["PATCH"])
+@jwt_required()
+def update_profile():
+    try:
+        user_id = get_jwt_identity()
+        user = db.session.get(User, int(user_id))
+        if not user:
+            return jsonify({
+                "success": False,
+                "error": "المستخدم غير موجود"
+            }), 404
+
+        data = request.get_json(silent=True) or {}
+
+        if "full_name" in data:
+            full_name = (data.get("full_name") or "").strip()
+            if len(full_name) < 3:
+                return jsonify({
+                    "success": False,
+                    "error": "الاسم الكامل مطلوب ويجب ألا يقل عن 3 أحرف"
+                }), 400
+            user.full_name = full_name
+
+        if "grade_id" in data:
+            grade_id = data.get("grade_id")
+            grade = Grade.query.get(grade_id) if grade_id else None
+            if not grade:
+                return jsonify({
+                    "success": False,
+                    "error": "الصف الدراسي غير صحيح"
+                }), 400
+            user.grade_id = grade.id
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "تم تحديث بياناتك بنجاح",
+            "user": user.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"UPDATE PROFILE ERROR: {e}")
+        return jsonify({
+            "success": False,
+            "error": "حدث خطأ أثناء تحديث بياناتك."
+        }), 500
+
+# =========================================================
 # FORGOT PASSWORD
 # =========================================================
 @auth_bp.route("/forgot-password", methods=["POST"])
