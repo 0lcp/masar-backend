@@ -20,6 +20,9 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 OTP_EXPIRE_MINUTES = 10
 MAX_OTP_ATTEMPTS = 3
 
+# مدة صلاحية توكن الدخول (access token) — طويلة عشان الطالب ما يطلع منه بسرعة
+ACCESS_TOKEN_EXPIRES = timedelta(days=30)
+
 # =========================================================
 # Helpers
 # =========================================================
@@ -424,7 +427,10 @@ def login():
                 "error": "الحساب غير موثق. تحقق من بريدك الإلكتروني أولاً."
             }), 403
 
-        access_token = create_access_token(identity=str(user.id))
+        access_token = create_access_token(
+            identity=str(user.id),
+            expires_delta=ACCESS_TOKEN_EXPIRES,
+        )
 
         return jsonify({
             "success": True,
